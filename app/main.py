@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
-from app.routers import auth, analysis
+from app.routers import analysis, auth, community
 
 app = FastAPI(
     title="AI Voice Scam Detector API",
@@ -21,6 +21,7 @@ app.add_middleware(
 # Include Routers
 app.include_router(auth.router)
 app.include_router(analysis.router)
+app.include_router(community.router)
 
 @app.get("/")
 def root():

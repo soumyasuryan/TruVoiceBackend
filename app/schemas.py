@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class PhoneNumberModel(BaseModel):
@@ -18,6 +18,7 @@ class PhoneNumberModel(BaseModel):
 class SignUpRequest(PhoneNumberModel):
     name: str = Field(..., min_length=2, max_length=100)
     age: int = Field(..., ge=13, le=120)
+    email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
 
 

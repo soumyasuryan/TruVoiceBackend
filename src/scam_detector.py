@@ -1,10 +1,9 @@
 import os
 import json
-import re
+import logging
 from groq import Groq
-from src.exception import CustomException
-from src.logger import logger
-import sys
+
+logger = logging.getLogger(__name__)
 
 class GroqScamDetector:
     def __init__(self, api_key: str = None):
@@ -34,7 +33,7 @@ class GroqScamDetector:
             return str(transcription).strip()
         except Exception as e:
             logger.error(f"Error during audio transcription: {e}")
-            raise CustomException(e, sys)
+            raise RuntimeError("Audio transcription failed.") from e
 
     def analyze_scam_intent(self, transcript: str) -> dict:
         """
@@ -99,9 +98,6 @@ JSON format:
             }
 
     def run(self, audio_path: str) -> dict:
-        """
-        Executes both transcription and intent detection.
-        """
         transcript = self.transcribe_audio(audio_path)
         analysis = self.analyze_scam_intent(transcript)
         
