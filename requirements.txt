@@ -5,7 +5,8 @@ pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 email-validator>=2.0.0
 python-jose>=3.3.0
-passlib[bcrypt]>=1.7.4
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.2
 supabase>=2.3.0
 groq>=0.4.0
 librosa>=0.10.1
