@@ -17,7 +17,7 @@ def _utc_now() -> datetime:
 
 
 def _send_and_store_otp(phone_number: str, purpose: str, email: str | None = None) -> None:
-    """Persist a one-time OTP and email it for signup verification."""
+    """Persist a one-time OTP and email it to the account owner."""
     db = get_supabase()
     now = _utc_now()
     existing = db.table("otp_store").select("last_sent_at").eq("phone_number", phone_number).execute()
@@ -38,16 +38,14 @@ def _send_and_store_otp(phone_number: str, purpose: str, email: str | None = Non
         },
         on_conflict="phone_number",
     ).execute()
-    if purpose == "signup":
-        if not email:
-            raise HTTPException(status_code=400, detail="An email address is required for signup verification.")
-        try:
-            send_email_otp(email, otp_code)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="Unable to deliver the verification email. Please try again.") from exc
-    # TODO: send login OTP with an SMS provider. Do not log OTPs in production.
+    if not email:
+        raise HTTPException(status_code=400, detail="An email address is required for OTP delivery.")
+    try:
+        send_email_otp(email, otp_code)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Unable to deliver the verification email. Please try again.") from exc
 
 
 @router.post("/signup/initiate")
@@ -87,13 +85,13 @@ def verify_signup_otp(payload: VerifyOtpRequest):
 @router.post("/login/initiate")
 def initiate_login(payload: LoginRequest):
     db = get_supabase()
-    result = db.table("users").select("id,password_hash,is_verified").eq("phone_number", payload.phone_number).execute()
+    result = db.table("users").select("id,password_hash,is_verified,email").eq("phone_number", payload.phone_number).execute()
     if not result.data or not verify_password(payload.password, result.data[0]["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid mobile number or password.")
     if not result.data[0]["is_verified"]:
         raise HTTPException(status_code=403, detail="Please verify your mobile number before logging in.")
-    _send_and_store_otp(payload.phone_number, "login")
-    return {"message": "Credentials verified. OTP sent to mobile number.", "phone_number": payload.phone_number}
+    _send_and_store_otp(payload.phone_number, "login", result.data[0]["email"])
+    return {"message": "Credentials verified. OTP sent to registered email.", "phone_number": payload.phone_number}
 
 
 @router.post("/login/verify", response_model=TokenResponse)

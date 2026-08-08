@@ -7,7 +7,7 @@ from src.scam_detector import GroqScamDetector
 from app.config import settings
 
 class UnifiedPipelineTester:
-    def __init__(self, model_path: str = "voice_detector_model.pkl"):
+    def __init__(self, model_path: str = "model/voice_detector_model.pkl"):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at '{model_path}'.")
         
