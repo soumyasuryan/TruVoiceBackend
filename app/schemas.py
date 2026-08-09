@@ -60,3 +60,36 @@ class SpamReportRequest(PhoneNumberModel):
 
 class ScamComplaintRequest(PhoneNumberModel):
     description: str = Field(..., min_length=5, max_length=2_000)
+
+
+class VoiceTokenResponse(BaseModel):
+    token: str
+    identity: str
+
+
+class OutgoingCallRequest(PhoneNumberModel):
+    pass
+
+
+class OutgoingCallResponse(BaseModel):
+    call_id: str
+    status: str
+    phone_number: str
+
+
+class VoiceCallResponse(BaseModel):
+    id: str
+    user_id: str
+    phone_number: str
+    provider_call_sid: str | None = None
+    status: str
+    risk_level: str
+    trust_score: float
+    confidence: float
+    is_scam: bool
+    is_ai_voice: bool
+    transcript: str
+    signals: list[str] = []
+    duration: int = 0
+    created_at: str | None = None
+

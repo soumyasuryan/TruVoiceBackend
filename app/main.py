@@ -1,7 +1,15 @@
+import sys
+from pathlib import Path
+
+# Add project root directory to sys.path to allow running directly from app/ or project root
+root_dir = Path(__file__).resolve().parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
-from app.routers import analysis, auth, community
+from app.routers import analysis, auth, community, voice
 
 app = FastAPI(
     title="AI Voice Scam Detector API",
@@ -22,6 +30,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(analysis.router)
 app.include_router(community.router)
+app.include_router(voice.router)
+app.include_router(voice.ws_router)
 
 @app.get("/")
 def root():
@@ -29,3 +39,9 @@ def root():
 
 # AWS Lambda Handler Wrapper
 handler = Mangum(app)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
+
