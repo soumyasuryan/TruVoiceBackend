@@ -1,27 +1,26 @@
 import datetime
 import json
 import logging
+import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, WebSocket, WebSocketDisconnect
 from jose import JWTError, jwt
 
 from app.config import settings
 from app.database import get_supabase
 from app.schemas import (
-    OutgoingCallRequest,
-    OutgoingCallResponse,
+    AgoraTokenRequest,
+    AgoraTokenResponse,
+    LogCallRequest,
+    LogCallResponse,
+    UpdateCallStatusRequest,
     VoiceCallResponse,
-    VoiceTokenResponse,
 )
+from app.services.agora_service import generate_rtc_token
 from app.services.streaming_service import (
     get_or_create_stream_session,
     remove_stream_session,
-)
-from app.services.twilio_service import (
-    generate_twiml_response,
-    generate_voice_token,
-    initiate_twilio_call,
 )
 from app.utils.auth import get_current_user_id
 from app.utils.websocket_manager import manager
@@ -30,128 +29,150 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice Calling & Telephony"])
 
 
-@router.post("/token", response_model=VoiceTokenResponse)
-def get_voice_token(user_id: str = Depends(get_current_user_id)):
-    """
-    Generates a secure server-side Twilio access token for the authenticated user.
-    """
-    identity = f"user_{user_id}"
-    token = generate_voice_token(identity)
-    return VoiceTokenResponse(token=token, identity=identity)
-
-
-@router.post("/outgoing", response_model=OutgoingCallResponse)
-def initiate_outgoing_call(
-    payload: OutgoingCallRequest,
+@router.post("/token", response_model=AgoraTokenResponse)
+def get_voice_agora_token(
+    payload: AgoraTokenRequest,
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Creates a database call record and initiates an outgoing phone call via Twilio.
+    Generates an Agora RTC token for the authenticated user to join a specified voice call channel.
+    """
+    if not settings.AGORA_APP_ID or not settings.AGORA_APP_CERTIFICATE:
+        logger.warning("AGORA_APP_ID or AGORA_APP_CERTIFICATE missing from settings; returning development token.")
+        return AgoraTokenResponse(
+            token=f"demo_agora_rtc_token_{user_id}_{payload.channelName}",
+            channelName=payload.channelName,
+            user_id=user_id,
+        )
+
+    try:
+        token = generate_rtc_token(payload.channelName, user_id)
+        return AgoraTokenResponse(
+            token=token,
+            channelName=payload.channelName,
+            user_id=user_id,
+        )
+    except Exception as e:
+        logger.error(f"Error generating Agora token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate Agora token.")
+
+
+@router.post("/log-call", response_model=LogCallResponse)
+def log_outgoing_call(
+    payload: LogCallRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Logs an app-to-app call initiation in the voice_calls database table.
     """
     db = get_supabase()
-    phone_number = payload.phone_number
 
-    # Insert initial call record into database
+    # Validate whether targetUserId is a valid UUID or a phone number string
+    target_user_uuid = None
+    phone_number_val = "app-to-app"
+
+    if payload.targetUserId:
+        try:
+            val = uuid.UUID(payload.targetUserId)
+            target_user_uuid = str(val)
+        except ValueError:
+            phone_number_val = payload.targetUserId
+
+    # Create initial database record for the call
     call_record = db.table("voice_calls").insert({
         "user_id": user_id,
-        "phone_number": phone_number,
+        "target_user_id": target_user_uuid,
+        "channel_name": payload.channelName,
+        "phone_number": phone_number_val,
         "status": "initiated",
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }).execute()
 
+
     if not call_record.data:
-        raise HTTPException(status_code=500, detail="Failed to initialize call record in database.")
+        raise HTTPException(status_code=500, detail="Failed to create voice call record.")
 
     call_id = str(call_record.data[0]["id"])
-
-    # Initiate Twilio call
-    public_url = settings.PUBLIC_SERVER_URL
-    provider_sid = initiate_twilio_call(phone_number, call_id, public_url)
-
-    if provider_sid:
-        db.table("voice_calls").update({"provider_call_sid": provider_sid}).eq("id", call_id).execute()
-
-    return OutgoingCallResponse(
+    return LogCallResponse(
         call_id=call_id,
+        channel_name=payload.channelName,
         status="initiated",
-        phone_number=phone_number
     )
 
 
-@router.post("/twiml")
-@router.get("/twiml")
-def get_call_twiml(call_id: str = Query(...)):
+@router.post("/update-call")
+async def update_call_status(
+    payload: UpdateCallStatusRequest,
+    user_id: str = Depends(get_current_user_id),
+):
     """
-    Twilio Webhook returning TwiML XML to connect the voice call to the media stream WebSocket.
+    Updates call status (e.g. answered, ended, declined, busy) and duration.
     """
-    public_url = settings.PUBLIC_SERVER_URL
-    twiml_content = generate_twiml_response(call_id, public_url)
-    return Response(content=twiml_content, media_type="application/xml")
+    db = get_supabase()
+    existing = db.table("voice_calls").select("id,user_id,target_user_id").eq("id", payload.call_id).execute()
+
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Call record not found.")
+
+    record = existing.data[0]
+    if str(record["user_id"]) != user_id and str(record.get("target_user_id")) != user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized to update this call record.")
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    update_data = {
+        "status": payload.status,
+        "updated_at": now_iso,
+    }
+
+    if payload.status == "answered":
+        update_data["answered_at"] = now_iso
+    elif payload.status in ["ended", "completed", "declined", "busy", "canceled"]:
+        update_data["ended_at"] = now_iso
+        if payload.duration > 0:
+            update_data["duration"] = payload.duration
+
+        # Broadcast call_ended to WebSocket subscribers
+        await manager.broadcast_to_call(payload.call_id, {
+            "type": "call_ended",
+            "call_id": payload.call_id,
+            "status": payload.status,
+        })
+
+    db.table("voice_calls").update(update_data).eq("id", payload.call_id).execute()
+    return {"message": "Call record updated successfully.", "call_id": payload.call_id, "status": payload.status}
 
 
-@router.post("/status")
-async def handle_call_status(request: Request):
+@router.get("/users")
+def list_app_users(user_id: str = Depends(get_current_user_id)):
     """
-    Twilio Status Callback Webhook to track call lifecycle.
+    Returns registered application users for user discovery and app-to-app calling.
     """
-    try:
-        form_data = await request.form()
-        call_sid = form_data.get("CallSid")
-        call_status = form_data.get("CallStatus", "unknown").lower()
-        duration = form_data.get("CallDuration")
-
-        db = get_supabase()
-        existing = db.table("voice_calls").select("id").eq("provider_call_sid", call_sid).execute()
-
-        if existing.data:
-            call_id = existing.data[0]["id"]
-            update_data = {
-                "status": call_status,
-                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
-            }
-            if call_status == "in-progress" or call_status == "answered":
-                update_data["answered_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            elif call_status in ["completed", "busy", "failed", "no-answer", "canceled"]:
-                update_data["ended_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                if duration and str(duration).isdigit():
-                    update_data["duration"] = int(duration)
-
-                # Broadcast call_ended notification to subscribers
-                await manager.broadcast_to_call(str(call_id), {
-                    "type": "call_ended",
-                    "call_id": str(call_id),
-                    "status": call_status
-                })
-
-            db.table("voice_calls").update(update_data).eq("id", call_id).execute()
-
-        return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Error handling Twilio call status: {e}")
-        return {"status": "error", "detail": str(e)}
+    db = get_supabase()
+    users = db.table("users").select("id,name,email,phone_number,created_at").neq("id", user_id).execute()
+    return {"users": users.data or []}
 
 
 @router.get("/calls", response_model=dict)
 def list_user_voice_calls(user_id: str = Depends(get_current_user_id)):
     """
-    Fetches historical voice calls for the authenticated user.
+    Fetches call history where authenticated user is caller or target callee.
     """
     db = get_supabase()
-    result = (
-        db.table("voice_calls")
-        .select("id,user_id,phone_number,provider_call_sid,status,risk_level,trust_score,confidence,is_scam,is_ai_voice,transcript,signals,duration,created_at")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(30)
-        .execute()
-    )
-    return {"items": result.data or []}
+    caller_calls = db.table("voice_calls").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(30).execute()
+    callee_calls = db.table("voice_calls").select("*").eq("target_user_id", user_id).order("created_at", desc=True).limit(30).execute()
+
+    items_map = {}
+    for item in (caller_calls.data or []) + (callee_calls.data or []):
+        items_map[item["id"]] = item
+
+    combined_items = sorted(items_map.values(), key=lambda x: x.get("created_at", ""), reverse=True)
+    return {"items": combined_items}
 
 
 @router.get("/calls/{call_id}")
 def get_voice_call_detail(call_id: str, user_id: str = Depends(get_current_user_id)):
     """
-    Fetches details for a specific call. Enforces user ownership.
+    Fetches details for a specific call. Enforces user ownership (caller or target user).
     """
     db = get_supabase()
     result = db.table("voice_calls").select("*").eq("id", call_id).execute()
@@ -159,83 +180,20 @@ def get_voice_call_detail(call_id: str, user_id: str = Depends(get_current_user_
         raise HTTPException(status_code=404, detail="Call record not found.")
 
     record = result.data[0]
-    if str(record["user_id"]) != user_id:
+    if str(record["user_id"]) != user_id and str(record.get("target_user_id")) != user_id:
         raise HTTPException(status_code=403, detail="Unauthorized access to this call record.")
 
     return record
 
 
-# WebSocket Routes setup helper
+# WebSocket Router Setup
 ws_router = APIRouter(tags=["WebSockets"])
-
-@ws_router.websocket("/ws/voice-stream")
-async def handle_media_stream_ws(websocket: WebSocket):
-    """
-    WebSocket endpoint receiving real-time audio streams from Twilio.
-    """
-    await websocket.accept()
-    logger.info("Twilio Media Stream WebSocket connected.")
-
-    current_call_id: Optional[str] = None
-    stream_sid: Optional[str] = None
-
-    try:
-        while True:
-            raw_msg = await websocket.receive_text()
-            if not raw_msg:
-                continue
-
-            msg = json.loads(raw_msg)
-            event_type = msg.get("event")
-
-            if event_type == "start":
-                start_data = msg.get("start", {})
-                stream_sid = start_data.get("streamSid")
-                custom_params = start_data.get("customParameters", {})
-                current_call_id = custom_params.get("call_id") or msg.get("streamSid")
-
-                logger.info(f"Media stream started for call_id: {current_call_id}, streamSid: {stream_sid}")
-                get_or_create_stream_session(current_call_id)
-
-                if current_call_id:
-                    await manager.broadcast_to_call(current_call_id, {
-                        "type": "call_started",
-                        "call_id": current_call_id,
-                        "status": "connected"
-                    })
-
-            elif event_type == "media":
-                media_data = msg.get("media", {})
-                payload = media_data.get("payload")
-                if payload and current_call_id:
-                    session = get_or_create_stream_session(current_call_id)
-                    await session.append_mulaw_payload(payload)
-
-            elif event_type == "stop":
-                logger.info(f"Media stream stopped for call_id: {current_call_id}")
-                if current_call_id:
-                    remove_stream_session(current_call_id)
-                    await manager.broadcast_to_call(current_call_id, {
-                        "type": "call_ended",
-                        "call_id": current_call_id,
-                        "status": "completed"
-                    })
-                break
-
-    except WebSocketDisconnect:
-        logger.info(f"Media stream WebSocket disconnected for call_id: {current_call_id}")
-    except Exception as e:
-        logger.error(f"Error handling media stream WS: {e}")
-    finally:
-        if current_call_id:
-            remove_stream_session(current_call_id)
-
 
 @ws_router.websocket("/ws/live-analysis/{call_id}")
 async def handle_live_analysis_ws(websocket: WebSocket, call_id: str, token: str = Query(...)):
     """
-    WebSocket endpoint for mobile clients to receive real-time AI scam analysis updates.
-    Requires JWT token and ownership validation of call_id.
+    WebSocket endpoint for mobile clients to receive real-time AI scam analysis updates during an Agora call.
+    Validates JWT token and verifies caller or callee ownership of call_id.
     """
     # 1. Authenticate user JWT
     try:
@@ -248,10 +206,15 @@ async def handle_live_analysis_ws(websocket: WebSocket, call_id: str, token: str
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    # 2. Check call ownership in database
+    # 2. Verify call ownership in database (caller or callee)
     db = get_supabase()
-    call_record = db.table("voice_calls").select("user_id").eq("id", call_id).execute()
-    if not call_record.data or str(call_record.data[0]["user_id"]) != str(user_id):
+    call_record = db.table("voice_calls").select("user_id,target_user_id").eq("id", call_id).execute()
+    if not call_record.data:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    rec = call_record.data[0]
+    if str(rec["user_id"]) != str(user_id) and str(rec.get("target_user_id")) != str(user_id):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -259,7 +222,6 @@ async def handle_live_analysis_ws(websocket: WebSocket, call_id: str, token: str
     await manager.connect_analysis(call_id, websocket)
     try:
         while True:
-            # Keep socket open and listen for ping/client messages
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")

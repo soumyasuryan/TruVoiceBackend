@@ -1,17 +1,17 @@
-# TruVoice Backend — Real-Time AI Voice Scam Detector & Telephony Engine
+# TruVoice Backend — Agora App-to-App Voice Scam Detector & Telephony Engine
 
-This repository powers TruVoice's real-time phone calling and live AI scam detection engine.
+This repository powers TruVoice's **app-to-app real-time voice calling engine** using **Agora Real-Time Communication (RTC)** for audio streaming and **Agora Real-Time Messaging (RTM)** for call signaling, user availability, and invitations. Live AI scam detection is preserved via WebSockets.
 
 ## Features
 - **Phone Authentication**: JWT auth, password hashing, email OTP verification (`/auth/*`).
 - **Audio Analysis API**: `POST /api/v1/analyze` for recorded audio files.
-- **Twilio Voice Telephony**:
-  - `POST /api/v1/voice/token`: Server-side Twilio Access Token generation with `VoiceGrant`.
-  - `POST /api/v1/voice/outgoing`: E.164 phone number validation, database call record tracking, and outgoing call dispatch.
-  - `POST /api/v1/voice/twiml`: TwiML webhook connecting call audio to backend WebSocket.
-  - `POST /api/v1/voice/status`: Call lifecycle tracking (ringing, answered, completed, duration).
-- **Real-Time Media Stream WebSocket**: `/ws/voice-stream` decodes incoming μ-law 8kHz audio packets into PCM/WAV and feeds standard 3-second audio windows into the AI pipeline off the event loop.
-- **Live Analysis WebSocket**: `/ws/live-analysis/{call_id}` authenticates via JWT, checks call ownership, and streams real-time `trust_score`, `risk_level`, `is_scam`, `is_ai_voice`, `transcript`, `signals`, and `risk_alert` events to mobile clients.
+- **Agora App-to-App Telephony**:
+  - `POST /api/v1/voice/token`: Server-side Agora RTC Token generation (`AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`) for a given `channelName`.
+  - `POST /api/v1/voice/log-call`: Creates database record in `voice_calls` table tracking `channel_name`, `user_id` (caller), and `target_user_id` (callee).
+  - `POST /api/v1/voice/update-call`: Logs call lifecycle status updates (`answered`, `ended`, `declined`, `busy`, duration).
+  - `GET /api/v1/voice/users`: Discovers available online users for direct app-to-app calling.
+  - `GET /api/v1/voice/calls`: Fetches call history where user is caller or callee.
+- **Live Analysis WebSocket**: `/ws/live-analysis/{call_id}` authenticates via JWT, checks call ownership (caller or target callee), and streams real-time `trust_score`, `risk_level`, `is_scam`, `is_ai_voice`, `transcript`, `signals`, and `risk_alert` events.
 
 ---
 
@@ -37,15 +37,11 @@ SMTP_USERNAME=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 SMTP_FROM_EMAIL=your-email@gmail.com
 
-# Twilio Telephony Credentials
-TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-TWILIO_AUTH_TOKEN=your_twilio_auth_token
-TWILIO_API_KEY=SKXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-TWILIO_API_SECRET=your_twilio_api_secret
-TWILIO_TWIML_APP_SID=APXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-TWILIO_PHONE_NUMBER=+1234567890
+# Agora RTC Credentials
+AGORA_APP_ID=your_agora_app_id
+AGORA_APP_CERTIFICATE=your_agora_app_certificate
 
-# Public Server URL (e.g. Ngrok URL for Twilio Webhooks & WebSockets)
+# Public Server URL
 PUBLIC_SERVER_URL=https://your-ngrok-subdomain.ngrok-free.app
 
 # Real-Time Voice Processing Settings
@@ -60,23 +56,7 @@ VOICE_ANALYSIS_INTERVAL_SECONDS=3.0
 Run the SQL migration scripts in your Supabase SQL Editor:
 1. `supabase/migrations/20260805_add_auth_history_and_safety.sql`
 2. `supabase/migrations/20260809_add_voice_calls.sql`
-
----
-
-## Local Telephony Setup with Ngrok
-
-1. Start local FastAPI server:
-   ```bash
-   uvicorn app.main:app --reload --port 8000
-   ```
-2. Start an Ngrok tunnel:
-   ```bash
-   ngrok http 8000
-   ```
-3. Set `PUBLIC_SERVER_URL` in `.env` to your Ngrok domain (`https://xxxx.ngrok-free.app`).
-4. In your Twilio Console:
-   - Set Voice Webhook URL to `https://xxxx.ngrok-free.app/api/v1/voice/twiml`
-   - Set Status Callback URL to `https://xxxx.ngrok-free.app/api/v1/voice/status`
+3. `supabase/migrations/20260810_agora_voice_calls.sql`
 
 ---
 
@@ -84,5 +64,5 @@ Run the SQL migration scripts in your Supabase SQL Editor:
 
 Run the backend unit test suite:
 ```bash
-python -m unittest discover tests
+.venv\Scripts\python -m unittest discover tests
 ```

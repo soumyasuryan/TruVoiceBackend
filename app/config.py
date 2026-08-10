@@ -15,13 +15,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "")
 
-    # Twilio Telephony Settings
-    TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
-    TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
-    TWILIO_API_KEY: str = os.getenv("TWILIO_API_KEY", "")
-    TWILIO_API_SECRET: str = os.getenv("TWILIO_API_SECRET", "")
-    TWILIO_TWIML_APP_SID: str = os.getenv("TWILIO_TWIML_APP_SID", "")
-    TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER", "")
+    # Agora Real-Time Communication (RTC) Settings
+    AGORA_APP_ID: str = os.getenv("AGORA_APP_ID", "")
+    AGORA_APP_CERTIFICATE: str = os.getenv("AGORA_APP_CERTIFICATE", "")
 
     # Server & Voice Stream Settings
     PUBLIC_SERVER_URL: str = os.getenv("PUBLIC_SERVER_URL", "http://localhost:8000")
@@ -29,4 +25,5 @@ class Settings(BaseSettings):
     VOICE_ANALYSIS_INTERVAL_SECONDS: float = float(os.getenv("VOICE_ANALYSIS_INTERVAL_SECONDS", "3.0"))
 
 settings = Settings()
+
 

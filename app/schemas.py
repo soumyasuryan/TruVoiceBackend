@@ -62,26 +62,39 @@ class ScamComplaintRequest(PhoneNumberModel):
     description: str = Field(..., min_length=5, max_length=2_000)
 
 
-class VoiceTokenResponse(BaseModel):
+
+class AgoraTokenRequest(BaseModel):
+    channelName: str = Field(..., min_length=1, max_length=128)
+
+
+class AgoraTokenResponse(BaseModel):
     token: str
-    identity: str
+    channelName: str
+    user_id: str
 
 
-class OutgoingCallRequest(PhoneNumberModel):
-    pass
+class LogCallRequest(BaseModel):
+    channelName: str = Field(..., min_length=1, max_length=128)
+    targetUserId: str = Field(..., min_length=1)
 
 
-class OutgoingCallResponse(BaseModel):
+class LogCallResponse(BaseModel):
+    call_id: str
+    channel_name: str
+    status: str
+
+
+class UpdateCallStatusRequest(BaseModel):
     call_id: str
     status: str
-    phone_number: str
+    duration: int = 0
 
 
 class VoiceCallResponse(BaseModel):
     id: str
     user_id: str
-    phone_number: str
-    provider_call_sid: str | None = None
+    target_user_id: str | None = None
+    channel_name: str | None = None
     status: str
     risk_level: str
     trust_score: float
@@ -92,4 +105,5 @@ class VoiceCallResponse(BaseModel):
     signals: list[str] = []
     duration: int = 0
     created_at: str | None = None
+
 
