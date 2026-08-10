@@ -58,12 +58,12 @@ def get_voice_agora_token(
 
 
 @router.post("/log-call", response_model=LogCallResponse)
-def log_outgoing_call(
+async def log_outgoing_call(
     payload: LogCallRequest,
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Logs an app-to-app call initiation in the voice_calls database table.
+    Logs an app-to-app call initiation in the voice_calls database table and dispatches real-time signaling to target user.
     """
     db = get_supabase()
 
@@ -88,11 +88,29 @@ def log_outgoing_call(
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }).execute()
 
-
     if not call_record.data:
         raise HTTPException(status_code=500, detail="Failed to create voice call record.")
 
     call_id = str(call_record.data[0]["id"])
+
+    # If target is a registered app user, dispatch real-time incoming call signal
+    if target_user_uuid:
+        caller_name = "TruVoice User"
+        try:
+            caller_user = db.table("users").select("name").eq("id", user_id).execute()
+            if caller_user.data and caller_user.data[0].get("name"):
+                caller_name = caller_user.data[0]["name"]
+        except Exception:
+            pass
+
+        await manager.send_to_user(target_user_uuid, {
+            "type": "incoming_call",
+            "callId": call_id,
+            "channelName": payload.channelName,
+            "callerUserId": user_id,
+            "callerName": caller_name,
+        })
+
     return LogCallResponse(
         call_id=call_id,
         channel_name=payload.channelName,
@@ -109,7 +127,7 @@ async def update_call_status(
     Updates call status (e.g. answered, ended, declined, busy) and duration.
     """
     db = get_supabase()
-    existing = db.table("voice_calls").select("id,user_id,target_user_id").eq("id", payload.call_id).execute()
+    existing = db.table("voice_calls").select("id,user_id,target_user_id,channel_name").eq("id", payload.call_id).execute()
 
     if not existing.data:
         raise HTTPException(status_code=404, detail="Call record not found.")
@@ -139,7 +157,47 @@ async def update_call_status(
         })
 
     db.table("voice_calls").update(update_data).eq("id", payload.call_id).execute()
+
+    # Dispatch signaling update to both caller and target callee
+    target_id = record.get("target_user_id")
+    resp_msg = {
+        "type": "call_response",
+        "callId": payload.call_id,
+        "action": payload.status,
+        "channelName": record.get("channel_name", ""),
+    }
+    await manager.send_to_user(str(record["user_id"]), resp_msg)
+    if target_id:
+        await manager.send_to_user(str(target_id), resp_msg)
+
     return {"message": "Call record updated successfully.", "call_id": payload.call_id, "status": payload.status}
+
+
+@router.get("/pending-call")
+def get_pending_incoming_call(user_id: str = Depends(get_current_user_id)):
+    """
+    Checks if there is an active initiated incoming call for the authenticated user.
+    """
+    db = get_supabase()
+    pending = db.table("voice_calls").select("*").eq("target_user_id", user_id).eq("status", "initiated").order("created_at", desc=True).limit(1).execute()
+    if pending.data:
+        rec = pending.data[0]
+        caller_name = "TruVoice User"
+        try:
+            c = db.table("users").select("name").eq("id", rec["user_id"]).execute()
+            if c.data and c.data[0].get("name"):
+                caller_name = c.data[0]["name"]
+        except Exception:
+            pass
+        return {
+            "has_pending": True,
+            "callId": rec["id"],
+            "channelName": rec.get("channel_name"),
+            "callerUserId": rec["user_id"],
+            "callerName": caller_name,
+        }
+    return {"has_pending": False}
+
 
 
 @router.get("/users")
@@ -230,3 +288,32 @@ async def handle_live_analysis_ws(websocket: WebSocket, call_id: str, token: str
     except Exception as e:
         logger.error(f"Error in live analysis WS for call {call_id}: {e}")
         await manager.disconnect_analysis(call_id, websocket)
+
+
+@ws_router.websocket("/ws/signaling")
+async def handle_user_signaling_ws(websocket: WebSocket, token: str = Query(...)):
+    """
+    WebSocket endpoint for user call signaling (incoming call alerts & call responses).
+    """
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+    except JWTError:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await manager.connect_user(user_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        await manager.disconnect_user(user_id, websocket)
+    except Exception as e:
+        logger.error(f"Error in user signaling WS for user {user_id}: {e}")
+        await manager.disconnect_user(user_id, websocket)
+
