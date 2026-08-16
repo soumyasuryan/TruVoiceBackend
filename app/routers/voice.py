@@ -311,9 +311,72 @@ async def handle_user_signaling_ws(websocket: WebSocket, token: str = Query(...)
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
+                continue
+
+            try:
+                message = json.loads(data)
+                if message.get("type") == "update_call_status":
+                    payload_data = message.get("payload")
+                    if not payload_data:
+                        continue
+                    
+                    try:
+                        payload = UpdateCallStatusRequest(**payload_data)
+                    except Exception:
+                        await websocket.send_json({"type": "error", "message": "Invalid payload for update_call_status."})
+                        continue
+
+                    db = get_supabase()
+                    existing = db.table("voice_calls").select("id,user_id,target_user_id,channel_name").eq("id", payload.call_id).execute()
+
+                    if not existing.data:
+                        await websocket.send_json({"type": "error", "message": "Call not found."})
+                        continue
+
+                    record = existing.data[0]
+                    if str(record["user_id"]) != user_id and str(record.get("target_user_id")) != user_id:
+                        await websocket.send_json({"type": "error", "message": "Unauthorized."})
+                        continue
+
+                    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    update_data = {
+                        "status": payload.status,
+                        "updated_at": now_iso,
+                    }
+
+                    if payload.status == "answered":
+                        update_data["answered_at"] = now_iso
+                    elif payload.status in ["ended", "completed", "declined", "busy", "canceled"]:
+                        update_data["ended_at"] = now_iso
+                        if payload.duration > 0:
+                            update_data["duration"] = payload.duration
+
+                        await manager.broadcast_to_call(payload.call_id, {
+                            "type": "call_ended",
+                            "call_id": payload.call_id,
+                            "status": payload.status,
+                        })
+
+                    db.table("voice_calls").update(update_data).eq("id", payload.call_id).execute()
+
+                    target_id = record.get("target_user_id")
+                    resp_msg = {
+                        "type": "call_response",
+                        "callId": payload.call_id,
+                        "action": payload.status,
+                        "channelName": record.get("channel_name", ""),
+                    }
+                    await manager.send_to_user(str(record["user_id"]), resp_msg)
+                    if target_id:
+                        await manager.send_to_user(str(target_id), resp_msg)
+                    
+                    await websocket.send_json({"type": "update_call_status_success", "call_id": payload.call_id, "status": payload.status})
+
+            except (json.JSONDecodeError, KeyError):
+                logger.warning(f"Invalid WebSocket message from user {user_id}: {data}")
+
     except WebSocketDisconnect:
         await manager.disconnect_user(user_id, websocket)
     except Exception as e:
         logger.error(f"Error in user signaling WS for user {user_id}: {e}")
         await manager.disconnect_user(user_id, websocket)
-
