@@ -23,15 +23,25 @@ def generate_rtc_token(channel_name: str, user_id: str, expiration_time_in_secon
         # Role 1 is Publisher (can speak and listen)
         role_publisher = 1
 
-        # Use string user account or numeric UID
-        token = RtcTokenBuilder.buildTokenWithUserAccount(
-            app_id,
-            app_certificate,
-            channel_name,
-            str(user_id),
-            role_publisher,
-            privilege_expired_ts
-        )
+        # Build token with uid=0 (wildcard integer UID) so client joining with uid 0 or user account works
+        try:
+            token = RtcTokenBuilder.buildTokenWithUid(
+                app_id,
+                app_certificate,
+                channel_name,
+                0,
+                role_publisher,
+                privilege_expired_ts
+            )
+        except Exception:
+            token = RtcTokenBuilder.buildTokenWithUserAccount(
+                app_id,
+                app_certificate,
+                channel_name,
+                str(user_id),
+                role_publisher,
+                privilege_expired_ts
+            )
         return token
     except Exception as e:
         logger.error(f"Error generating Agora RTC token: {e}")

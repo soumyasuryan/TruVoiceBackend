@@ -346,8 +346,13 @@ async def handle_user_signaling_ws(websocket: WebSocket, token: str = Query(...)
 
                     record = existing.data[0]
                     if str(record["user_id"]) != user_id and str(record.get("target_user_id")) != user_id:
-                        await websocket.send_json({"type": "error", "message": "Unauthorized."})
-                        continue
+                        if record.get("target_user_id") is None:
+                            # Auto-assign target_user_id to user_id (the answering callee)
+                            db.table("voice_calls").update({"target_user_id": user_id}).eq("id", payload.call_id).execute()
+                            record["target_user_id"] = user_id
+                        else:
+                            await websocket.send_json({"type": "error", "message": "Unauthorized."})
+                            continue
 
                     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
                     update_data = {
