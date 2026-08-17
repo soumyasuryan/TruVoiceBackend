@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 import shutil
 import tempfile
@@ -12,6 +13,7 @@ from app.utils.auth import get_current_user_id
 from app.utils.pipeline import get_pipeline
 from app.utils.websocket_manager import manager
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Audio Analysis"])
 
 
@@ -120,20 +122,23 @@ def get_analysis_history(user_id: str = Depends(get_current_user_id)):
 
 
 def _save_analysis_history(user_id: str, caller_number: str | None, result: dict) -> None:
-    db = get_supabase()
-    db.table("call_analysis_history").insert(
-        {
-            "user_id": user_id,
-            "caller_number": caller_number,
-            "file_name": result["file_name"],
-            "transcript": result["transcript"],
-            "ai_voice_probability": result["ai_voice_probability"],
-            "scam_intent_score": result["scam_intent_score"],
-            "unified_risk_score": result["unified_risk_score"],
-            "risk_level": result["risk_level"],
-            "scam_category": result["scam_category"],
-            "flagged_keywords": result["flagged_keywords"],
-            "reasoning": result["reasoning"],
-        }
-    ).execute()
+    try:
+        db = get_supabase()
+        db.table("call_analysis_history").insert(
+            {
+                "user_id": user_id,
+                "caller_number": caller_number,
+                "file_name": result["file_name"],
+                "transcript": result["transcript"],
+                "ai_voice_probability": result["ai_voice_probability"],
+                "scam_intent_score": result["scam_intent_score"],
+                "unified_risk_score": result["unified_risk_score"],
+                "risk_level": result["risk_level"],
+                "scam_category": result["scam_category"],
+                "flagged_keywords": result["flagged_keywords"],
+                "reasoning": result["reasoning"],
+            }
+        ).execute()
+    except Exception as exc:
+        logger.warning(f"Could not save call analysis history to database: {exc}")
 
