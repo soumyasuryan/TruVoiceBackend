@@ -54,6 +54,12 @@ class AudioAnalysisResponse(BaseModel):
     reasoning: str
 
 
+class AudioBase64Request(BaseModel):
+    audio_base64: str
+    caller_number: str | None = None
+    call_id: str | None = None
+
+
 class SpamReportRequest(PhoneNumberModel):
     pass
 

@@ -44,5 +44,49 @@ class TestAgoraVoiceAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "online")
 
+    def test_base64_audio_analysis(self):
+        import base64
+        import struct
+
+        # Build a minimal 16-bit PCM WAV byte buffer
+        sample_rate = 16000
+        num_channels = 1
+        bits_per_sample = 16
+        data_len = 3200  # 0.1 sec of audio
+
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF",
+            36 + data_len,
+            b"WAVE",
+            b"fmt ",
+            16,
+            1,
+            num_channels,
+            sample_rate,
+            sample_rate * num_channels * bits_per_sample // 8,
+            num_channels * bits_per_sample // 8,
+            bits_per_sample,
+            b"data",
+            data_len,
+        )
+        audio_payload = header + b"\x00" * data_len
+        b64_audio = base64.b64encode(audio_payload).decode("utf-8")
+
+        response = self.client.post(
+            "/api/v1/analysis/audio",
+            json={
+                "audio_base64": b64_audio,
+                "caller_number": "+919876543210",
+                "call_id": "test-call-id-999",
+            },
+            headers={"Authorization": f"Bearer {self.auth_token}"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("transcript", data)
+        self.assertIn("unified_risk_score", data)
+        self.assertIn("risk_level", data)
+
 if __name__ == "__main__":
     unittest.main()
