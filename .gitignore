@@ -1,3 +1,4 @@
 .env
 /.venv
 /supabase
+__pycache__/
