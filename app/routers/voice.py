@@ -76,7 +76,13 @@ async def log_outgoing_call(
             val = uuid.UUID(payload.targetUserId)
             target_user_uuid = str(val)
         except ValueError:
-            phone_number_val = payload.targetUserId
+            phone_number_val = payload.targetUserId.strip().replace(" ", "").replace("-", "")
+            try:
+                found_user = db.table("users").select("id").or_(f"phone_number.eq.{phone_number_val},email.eq.{payload.targetUserId}").execute()
+                if found_user.data:
+                    target_user_uuid = str(found_user.data[0]["id"])
+            except Exception as e:
+                logger.warning(f"Error resolving target user UUID: {e}")
 
     # Create initial database record for the call
     call_record = db.table("voice_calls").insert({
@@ -134,7 +140,12 @@ async def update_call_status(
 
     record = existing.data[0]
     if str(record["user_id"]) != user_id and str(record.get("target_user_id")) != user_id:
-        raise HTTPException(status_code=403, detail="Unauthorized to update this call record.")
+        if record.get("target_user_id") is None:
+            # Auto-assign target_user_id to user_id (the answering callee)
+            db.table("voice_calls").update({"target_user_id": user_id}).eq("id", payload.call_id).execute()
+            record["target_user_id"] = user_id
+        else:
+            raise HTTPException(status_code=403, detail="Unauthorized to update this call record.")
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     update_data = {
