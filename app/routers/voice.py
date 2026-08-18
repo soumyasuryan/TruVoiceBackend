@@ -3,7 +3,7 @@ import json
 import logging
 import uuid
 from typing import Optional
-
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, WebSocket, WebSocketDisconnect
 from jose import JWTError, jwt
 
@@ -197,38 +197,6 @@ async def update_call_status(
 def get_pending_incoming_call(user_id: str = Depends(get_current_user_id)):
     """
     Checks if there is an active initiated incoming call for the authenticated user.
-<<<<<<< HEAD
-    A call should only stay pending for a short active window before it is considered stale.
-    """
-    db = get_supabase()
-    pending = db.table("voice_calls").select("*").eq("target_user_id", user_id).eq("status", "initiated").order("created_at", desc=True).limit(10).execute()
-    if not pending.data:
-        return {"has_pending": False}
-
-    now = datetime.datetime.now(datetime.timezone.utc)
-    stale_threshold = datetime.timedelta(minutes=2)
-
-    for rec in pending.data:
-        created_at = _parse_iso_datetime(rec.get("created_at"))
-        if created_at and now - created_at > stale_threshold:
-            continue
-
-        caller_name = "TruVoice User"
-        try:
-            c = db.table("users").select("name").eq("id", rec["user_id"]).execute()
-            if c.data and c.data[0].get("name"):
-                caller_name = c.data[0]["name"]
-        except Exception:
-            pass
-        return {
-            "has_pending": True,
-            "callId": rec["id"],
-            "channelName": rec.get("channel_name"),
-            "callerUserId": rec["user_id"],
-            "callerName": caller_name,
-        }
-
-=======
     Auto-expires any pending calls older than 45 seconds.
     """
     db = get_supabase()
@@ -268,7 +236,6 @@ def get_pending_incoming_call(user_id: str = Depends(get_current_user_id)):
                 "callerUserId": rec["user_id"],
                 "callerName": caller_name,
             }
->>>>>>> a5ca0df083c69684b3e6d3809296c20023cf47bd
     return {"has_pending": False}
 
 
