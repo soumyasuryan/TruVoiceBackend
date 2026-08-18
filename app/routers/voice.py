@@ -5,7 +5,6 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, WebSocket, WebSocketDisconnect
 from jose import JWTError, jwt
-
 from app.config import settings
 from app.database import get_supabase
 from app.schemas import (
