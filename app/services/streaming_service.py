@@ -7,7 +7,6 @@ import os
 import tempfile
 import wave
 import numpy as np
-
 from app.config import settings
 from app.database import get_supabase
 from app.utils.pipeline import get_pipeline
