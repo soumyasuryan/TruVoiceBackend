@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 def generate_rtc_token(channel_name: str, user_id: str, expiration_time_in_seconds: int = 3600) -> str:
     """
     Generates a secure Agora RTC Token for joining a specified audio channel.
-    Uses user_id as string user account or numeric hash.
+    Uses a stable, user-specific UID so both peers can join the same channel without colliding.
     """
     app_id = settings.AGORA_APP_ID
     app_certificate = settings.AGORA_APP_CERTIFICATE
@@ -20,18 +20,21 @@ def generate_rtc_token(channel_name: str, user_id: str, expiration_time_in_secon
 
     try:
         from agora_token_builder import RtcTokenBuilder
-        # Role 1 is Publisher (can speak and listen)
-        role_publisher = 1
 
-        # Build token with uid=0 (wildcard integer UID) so client joining with uid 0 or user account works
+        role_publisher = 1
+        uid_value = 1
+        if user_id:
+            source = str(user_id)
+            uid_value = (sum((i + 1) * ord(ch) for i, ch in enumerate(source)) % 1000000000) + 1
+
         try:
             token = RtcTokenBuilder.buildTokenWithUid(
                 app_id,
                 app_certificate,
                 channel_name,
-                0,
+                uid_value,
                 role_publisher,
-                privilege_expired_ts
+                privilege_expired_ts,
             )
         except Exception:
             token = RtcTokenBuilder.buildTokenWithUserAccount(
@@ -40,7 +43,7 @@ def generate_rtc_token(channel_name: str, user_id: str, expiration_time_in_secon
                 channel_name,
                 str(user_id),
                 role_publisher,
-                privilege_expired_ts
+                privilege_expired_ts,
             )
         return token
     except Exception as e:
