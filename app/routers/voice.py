@@ -3,7 +3,7 @@ import json
 import logging
 import uuid
 from typing import Optional
-
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status, WebSocket, WebSocketDisconnect
 from jose import JWTError, jwt
 
