@@ -188,25 +188,45 @@ async def update_call_status(
 def get_pending_incoming_call(user_id: str = Depends(get_current_user_id)):
     """
     Checks if there is an active initiated incoming call for the authenticated user.
+    Auto-expires any pending calls older than 45 seconds.
     """
     db = get_supabase()
-    pending = db.table("voice_calls").select("*").eq("target_user_id", user_id).eq("status", "initiated").order("created_at", desc=True).limit(1).execute()
+    pending = db.table("voice_calls").select("*").eq("target_user_id", user_id).eq("status", "initiated").order("created_at", desc=True).execute()
     if pending.data:
-        rec = pending.data[0]
-        caller_name = "TruVoice User"
-        try:
-            c = db.table("users").select("name").eq("id", rec["user_id"]).execute()
-            if c.data and c.data[0].get("name"):
-                caller_name = c.data[0]["name"]
-        except Exception:
-            pass
-        return {
-            "has_pending": True,
-            "callId": rec["id"],
-            "channelName": rec.get("channel_name"),
-            "callerUserId": rec["user_id"],
-            "callerName": caller_name,
-        }
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for rec in pending.data:
+            created_str = rec.get("started_at") or rec.get("created_at")
+            is_expired = False
+            if created_str:
+                try:
+                    created_time = datetime.datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                    if (now - created_time).total_seconds() > 45:
+                        is_expired = True
+                except Exception as e:
+                    logger.warning(f"Error parsing pending call timestamp for call {rec.get('id')}: {e}")
+
+            if is_expired:
+                # Auto-expire stale initiated record in database
+                try:
+                    db.table("voice_calls").update({"status": "canceled", "updated_at": now.isoformat()}).eq("id", rec["id"]).execute()
+                except Exception as ex:
+                    logger.warning(f"Failed to auto-cancel expired call {rec.get('id')}: {ex}")
+                continue
+
+            caller_name = "TruVoice User"
+            try:
+                c = db.table("users").select("name").eq("id", rec["user_id"]).execute()
+                if c.data and c.data[0].get("name"):
+                    caller_name = c.data[0]["name"]
+            except Exception:
+                pass
+            return {
+                "has_pending": True,
+                "callId": rec["id"],
+                "channelName": rec.get("channel_name"),
+                "callerUserId": rec["user_id"],
+                "callerName": caller_name,
+            }
     return {"has_pending": False}
 
 
