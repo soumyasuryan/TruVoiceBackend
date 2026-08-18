@@ -29,6 +29,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice Calling & Telephony"])
 
 
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime.datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 @router.post("/token", response_model=AgoraTokenResponse)
 def get_voice_agora_token(
     payload: AgoraTokenRequest,
@@ -188,11 +197,21 @@ async def update_call_status(
 def get_pending_incoming_call(user_id: str = Depends(get_current_user_id)):
     """
     Checks if there is an active initiated incoming call for the authenticated user.
+    A call should only stay pending for a short active window before it is considered stale.
     """
     db = get_supabase()
-    pending = db.table("voice_calls").select("*").eq("target_user_id", user_id).eq("status", "initiated").order("created_at", desc=True).limit(1).execute()
-    if pending.data:
-        rec = pending.data[0]
+    pending = db.table("voice_calls").select("*").eq("target_user_id", user_id).eq("status", "initiated").order("created_at", desc=True).limit(10).execute()
+    if not pending.data:
+        return {"has_pending": False}
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    stale_threshold = datetime.timedelta(minutes=2)
+
+    for rec in pending.data:
+        created_at = _parse_iso_datetime(rec.get("created_at"))
+        if created_at and now - created_at > stale_threshold:
+            continue
+
         caller_name = "TruVoice User"
         try:
             c = db.table("users").select("name").eq("id", rec["user_id"]).execute()
@@ -207,6 +226,7 @@ def get_pending_incoming_call(user_id: str = Depends(get_current_user_id)):
             "callerUserId": rec["user_id"],
             "callerName": caller_name,
         }
+
     return {"has_pending": False}
 
 

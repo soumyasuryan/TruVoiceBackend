@@ -7,8 +7,12 @@ if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
 import unittest
+from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock, patch
+
 from fastapi.testclient import TestClient
 from app.main import app
+from app.routers.voice import get_pending_incoming_call
 from app.utils.auth import create_access_token
 from app.services.agora_service import generate_rtc_token
 
@@ -43,6 +47,26 @@ class TestAgoraVoiceAPI(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "online")
+
+    @patch("app.routers.voice.get_supabase")
+    def test_stale_pending_call_is_not_returned(self, mock_get_supabase):
+        mock_db = Mock()
+        stale_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = Mock(
+            data=[{
+                "id": "call-stale-1",
+                "user_id": "other-user",
+                "target_user_id": self.mock_user_id,
+                "channel_name": "channel-stale",
+                "status": "initiated",
+                "created_at": stale_time,
+            }]
+        )
+        mock_get_supabase.return_value = mock_db
+
+        result = get_pending_incoming_call(user_id=self.mock_user_id)
+
+        self.assertEqual(result["has_pending"], False)
 
     def test_base64_audio_analysis(self):
         import base64
