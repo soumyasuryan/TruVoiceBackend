@@ -1,55 +1,53 @@
+import logging
 import os
-import sys
-import joblib
-import numpy as np
-import librosa
-from src.scam_detector import GroqScamDetector
+from app.ai_voice.aasist_detector import AASISTDetector
 from app.config import settings
+from src.scam_detector import GroqScamDetector
+
+logger = logging.getLogger(__name__)
+
 
 class UnifiedPipelineTester:
-    def __init__(self, model_path: str = "model/voice_detector_model.pkl"):
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found at '{model_path}'.")
-        
-        self.acoustic_model = joblib.load(model_path)
-        
+    def __init__(self, model_path: str = None):
+        target_model_path = model_path or settings.AASIST_MODEL_PATH
+
+        if not os.path.exists(target_model_path):
+            error_msg = f"AASIST model checkpoint not found: {target_model_path}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+
+        # Initialize AASIST Deepfake Voice Detector (replaces XGBoost)
+        self.aasist_detector = AASISTDetector(
+            model_path=target_model_path,
+            device="auto",
+            threshold=settings.AASIST_THRESHOLD,
+        )
+
         if not settings.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY environment variable is missing.")
-        
+
+        # Initialize Groq NLP Scam Intent Detector (UNCHANGED)
         self.scam_detector = GroqScamDetector(api_key=settings.GROQ_API_KEY)
 
-    def extract_acoustic_features(self, audio_path: str, sr: int = 16000) -> np.ndarray:
-        audio_array, _ = librosa.load(audio_path, sr=sr)
-        
-        f0, _, _ = librosa.pyin(audio_array, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'), sr=sr)
-        f0_clean = f0[~np.isnan(f0)] if f0 is not None else np.array([0.0])
-        
-        pitch_mean = np.mean(f0_clean) if len(f0_clean) > 0 else 0.0
-        pitch_std = np.std(f0_clean) if len(f0_clean) > 0 else 0.0
-        pitch_max = np.max(f0_clean) if len(f0_clean) > 0 else 0.0
-        pitch_min = np.min(f0_clean) if len(f0_clean) > 0 else 0.0
-
-        mfcc = librosa.feature.mfcc(y=audio_array, sr=sr, n_mfcc=20)
-        mfcc_mean = np.mean(mfcc, axis=1)
-        mfcc_std = np.std(mfcc, axis=1)
-
-        spec_centroid = np.mean(librosa.feature.spectral_centroid(y=audio_array, sr=sr))
-        spec_rolloff = np.mean(librosa.feature.spectral_rolloff(y=audio_array, sr=sr))
-        zcr = np.mean(librosa.feature.zero_crossing_rate(y=audio_array))
-
-        features = np.hstack([pitch_mean, pitch_std, pitch_max, pitch_min, spec_centroid, spec_rolloff, zcr, mfcc_mean, mfcc_std])
-        return features.reshape(1, -1)
-
     def analyze_audio_sample(self, audio_path: str) -> dict:
-        X_features = self.extract_acoustic_features(audio_path)
-        ai_voice_prob = float(self.acoustic_model.predict_proba(X_features)[0][1])
-        
+        """
+        Executes dual AI analysis pipeline:
+        1. AASIST PyTorch AI-Voice Detector (audio waveform -> spoof probability)
+        2. Groq Whisper + LLM Scam Intent Detector (transcript -> scam score)
+        Combines scores using unchanged unified risk formula: (0.5 * ai_voice_prob) + (0.5 * scam_text_score).
+        """
+        # Step 1: AASIST AI-Voice Detection
+        aasist_result = self.aasist_detector.predict(audio_path)
+        ai_voice_prob = float(aasist_result["spoof_probability"])  # 0.0 (bonafide) to 1.0 (spoof)
+
+        # Step 2: Groq Scam Intent Detection (Unchanged)
         nlp_result = self.scam_detector.run(audio_path)
         scam_text_score = float(nlp_result.get("scam_score", 0.0))
-        
+
+        # Step 3: Unified Risk Score (Unchanged formula)
         unified_risk = (0.5 * ai_voice_prob) + (0.5 * scam_text_score)
         risk_level = "CRITICAL RISK" if unified_risk >= 0.7 else "MEDIUM RISK" if unified_risk >= 0.35 else "LOW RISK"
-        
+
         return {
             "file_name": os.path.basename(audio_path),
             "transcript": nlp_result.get("transcript", ""),
@@ -59,11 +57,13 @@ class UnifiedPipelineTester:
             "risk_level": risk_level,
             "scam_category": nlp_result.get("category", "N/A"),
             "flagged_keywords": nlp_result.get("risk_keywords", []),
-            "reasoning": nlp_result.get("reasoning", "")
+            "reasoning": nlp_result.get("reasoning", ""),
         }
+
 
 # Singleton instance
 pipeline_engine = None
+
 
 def get_pipeline():
     global pipeline_engine

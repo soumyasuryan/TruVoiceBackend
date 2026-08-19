@@ -2,3 +2,5 @@
 /.venv
 /supabase
 __pycache__/
+*.pth
+test_sample.wav

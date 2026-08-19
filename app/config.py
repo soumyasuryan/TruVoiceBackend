@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     VOICE_ANALYSIS_CHUNK_SECONDS: float = float(os.getenv("VOICE_ANALYSIS_CHUNK_SECONDS", "3.0"))
     VOICE_ANALYSIS_INTERVAL_SECONDS: float = float(os.getenv("VOICE_ANALYSIS_INTERVAL_SECONDS", "3.0"))
 
+    # AASIST Deepfake Voice Detector Settings
+    AASIST_MODEL_PATH: str = os.getenv("AASIST_MODEL_PATH", "model/aasist_truvoice_epoch6_best.pth")
+    AASIST_THRESHOLD: float = float(os.getenv("AASIST_THRESHOLD", "0.5"))
+
 settings = Settings()
-
-
