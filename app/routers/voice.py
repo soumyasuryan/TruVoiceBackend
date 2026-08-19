@@ -144,7 +144,7 @@ async def update_call_status(
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Updates call status (e.g. answered, ended, declined, busy) and duration.
+    Updates call status (e.g. answered, ended, no-answer, declined, busy) and duration.
     """
     db = get_supabase()
     existing = db.table("voice_calls").select("id,user_id,target_user_id,channel_name").eq("id", payload.call_id).execute()
@@ -169,7 +169,7 @@ async def update_call_status(
 
     if payload.status == "answered":
         update_data["answered_at"] = now_iso
-    elif payload.status in ["ended", "completed", "declined", "busy", "canceled"]:
+    elif payload.status in ["ended", "completed", "no-answer", "no_answer", "missed", "declined", "busy", "canceled"]:
         update_data["ended_at"] = now_iso
         if payload.duration > 0:
             update_data["duration"] = payload.duration
@@ -222,7 +222,7 @@ def get_pending_incoming_call(user_id: str = Depends(get_current_user_id)):
             if is_expired:
                 # Auto-expire stale initiated record in database
                 try:
-                    db.table("voice_calls").update({"status": "canceled", "updated_at": now.isoformat()}).eq("id", rec["id"]).execute()
+                        db.table("voice_calls").update({"status": "no-answer", "updated_at": now.isoformat(), "ended_at": now.isoformat()}).eq("id", rec["id"]).execute()
                 except Exception as ex:
                     logger.warning(f"Failed to auto-cancel expired call {rec.get('id')}: {ex}")
                 continue
@@ -269,7 +269,33 @@ def list_user_voice_calls(user_id: str = Depends(get_current_user_id)):
         items_map[item["id"]] = item
 
     combined_items = sorted(items_map.values(), key=lambda x: x.get("created_at", ""), reverse=True)
-    return {"items": combined_items}
+    enriched_items = []
+    for item in combined_items:
+        participant_id = (
+            item.get("target_user_id")
+            if str(item.get("user_id")) == str(user_id)
+            else item.get("user_id")
+        )
+        participant = None
+        if participant_id:
+            participant_result = (
+                db.table("users")
+                .select("name,phone_number")
+                .eq("id", participant_id)
+                .limit(1)
+                .execute()
+            )
+            participant = participant_result.data[0] if participant_result.data else None
+
+        enriched_item = dict(item)
+        if participant:
+            enriched_item["target_user_name"] = participant.get("name")
+            enriched_item["caller_name"] = participant.get("name")
+            enriched_item["caller_number"] = participant.get("phone_number")
+            enriched_item["phone_number"] = participant.get("phone_number")
+        enriched_items.append(enriched_item)
+
+    return {"items": enriched_items}
 
 
 @router.get("/calls/{call_id}")
@@ -396,7 +422,7 @@ async def handle_user_signaling_ws(websocket: WebSocket, token: str = Query(...)
 
                     if payload.status == "answered":
                         update_data["answered_at"] = now_iso
-                    elif payload.status in ["ended", "completed", "declined", "busy", "canceled"]:
+                    elif payload.status in ["ended", "completed", "no-answer", "no_answer", "missed", "declined", "busy", "canceled"]:
                         update_data["ended_at"] = now_iso
                         if payload.duration > 0:
                             update_data["duration"] = payload.duration
