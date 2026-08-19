@@ -82,6 +82,7 @@ class AgoraTokenResponse(BaseModel):
 class LogCallRequest(BaseModel):
     channelName: str = Field(..., min_length=1, max_length=128)
     targetUserId: str = Field(..., min_length=1)
+    targetPhoneNumber: str | None = None
 
 
 class LogCallResponse(BaseModel):

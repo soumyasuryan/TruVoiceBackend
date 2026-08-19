@@ -76,16 +76,23 @@ async def log_outgoing_call(
 
     # Validate whether targetUserId is a valid UUID or a phone number string
     target_user_uuid = None
-    phone_number_val = "app-to-app"
+    phone_number_val = (
+        payload.targetPhoneNumber.strip().replace(" ", "").replace("-", "")
+        if payload.targetPhoneNumber
+        else "app-to-app"
+    )
 
     if payload.targetUserId:
         try:
             val = uuid.UUID(payload.targetUserId)
             target_user_uuid = str(val)
         except ValueError:
-            phone_number_val = payload.targetUserId.strip().replace(" ", "").replace("-", "")
+            if not payload.targetPhoneNumber:
+                phone_number_val = payload.targetUserId.strip().replace(" ", "").replace("-", "")
             try:
-                found_user = db.table("users").select("id").or_(f"phone_number.eq.{phone_number_val},email.eq.{payload.targetUserId}").execute()
+                found_user = db.table("users").select("id").or_(
+                    f"phone_number.eq.{phone_number_val},email.eq.{payload.targetUserId}"
+                ).execute()
                 if found_user.data:
                     target_user_uuid = str(found_user.data[0]["id"])
             except Exception as e:
