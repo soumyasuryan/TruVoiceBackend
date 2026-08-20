@@ -52,21 +52,22 @@ class TestAgoraVoiceAPI(unittest.TestCase):
     def test_stale_pending_call_is_not_returned(self, mock_get_supabase):
         mock_db = Mock()
         stale_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = Mock(
-            data=[{
-                "id": "call-stale-1",
-                "user_id": "other-user",
-                "target_user_id": self.mock_user_id,
-                "channel_name": "channel-stale",
-                "status": "initiated",
-                "created_at": stale_time,
-            }]
-        )
+        mock_res = Mock()
+        mock_res.data = [{
+            "id": "call-stale-1",
+            "user_id": "other-user",
+            "target_user_id": self.mock_user_id,
+            "channel_name": "channel-stale",
+            "status": "initiated",
+            "created_at": stale_time,
+        }]
+        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.execute.return_value = mock_res
         mock_get_supabase.return_value = mock_db
 
         result = get_pending_incoming_call(user_id=self.mock_user_id)
 
         self.assertEqual(result["has_pending"], False)
+
 
     def test_base64_audio_analysis(self):
         import base64
