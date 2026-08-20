@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from app.ai_voice.aasist_model import Model as AASISTModel
 from app.ai_voice.preprocessing import preprocess_audio_waveform
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,10 +13,17 @@ logger = logging.getLogger(__name__)
 class AASISTDetector:
     """
     Dedicated AASIST PyTorch Deepfake / AI-Voice Detector abstraction.
-    Handles checkpoint loading, device allocation, preprocessing, and inference.
+    Handles checkpoint loading, device allocation, preprocessing, silence detection, and temperature-calibrated inference.
     """
 
-    def __init__(self, model_path: str, device: str = "auto", threshold: float = 0.5):
+    def __init__(
+        self,
+        model_path: str,
+        device: str = "auto",
+        threshold: float = None,
+        temperature: float = None,
+        min_rms: float = None,
+    ):
         if not os.path.exists(model_path):
             error_msg = f"AASIST model checkpoint not found: {model_path}"
             logger.error(error_msg)
@@ -26,7 +34,9 @@ class AASISTDetector:
         else:
             self.device = torch.device(device)
 
-        self.threshold = float(threshold)
+        self.threshold = float(threshold if threshold is not None else settings.AASIST_THRESHOLD)
+        self.temperature = float(temperature if temperature is not None else settings.AASIST_TEMPERATURE)
+        self.min_rms = float(min_rms if min_rms is not None else settings.AASIST_MIN_RMS)
         self.model_path = model_path
 
         try:
@@ -64,6 +74,8 @@ class AASISTDetector:
         logger.info(f"AASIST sample rate: {self.sample_rate}")
         logger.info(f"AASIST input samples: {self.num_samples}")
         logger.info(f"AASIST threshold: {self.threshold}")
+        logger.info(f"AASIST temperature: {self.temperature}")
+        logger.info(f"AASIST min RMS: {self.min_rms}")
 
     def predict(
         self,
@@ -74,18 +86,30 @@ class AASISTDetector:
         Executes AASIST deepfake voice detection on input audio.
         Returns dictionary containing spoof_probability, bonafide_probability, and prediction.
         """
-        waveform = preprocess_audio_waveform(
+        waveform, rms_energy = preprocess_audio_waveform(
             audio_input=audio_input,
             sample_rate=sample_rate,
             target_sample_rate=self.sample_rate,
             target_num_samples=self.num_samples,
         )
 
+        # Silence / Low Energy Gate: If clip contains no active voice speech, return bonafide (safe)
+        if rms_energy < self.min_rms:
+            logger.debug(f"Audio RMS energy ({rms_energy:.6f}) below minimum threshold ({self.min_rms}); marking bonafide.")
+            return {
+                "spoof_probability": 0.0,
+                "bonafide_probability": 1.0,
+                "prediction": "bonafide",
+                "rms_energy": rms_energy,
+            }
+
         waveform = waveform.to(self.device)
 
         with torch.inference_mode():
             _, logits = self.model(waveform)
-            probabilities = torch.softmax(logits, dim=1)
+            # Temperature scaling on logits to prevent extreme probability saturation on live audio
+            scaled_logits = logits / self.temperature
+            probabilities = torch.softmax(scaled_logits, dim=1)
             bonafide_prob = float(probabilities[0, 0].item())
             spoof_prob = float(probabilities[0, 1].item())
 
@@ -95,4 +119,5 @@ class AASISTDetector:
             "spoof_probability": spoof_prob,
             "bonafide_probability": bonafide_prob,
             "prediction": prediction,
+            "rms_energy": rms_energy,
         }

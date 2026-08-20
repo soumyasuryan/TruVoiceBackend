@@ -27,5 +27,8 @@ class Settings(BaseSettings):
     # AASIST Deepfake Voice Detector Settings
     AASIST_MODEL_PATH: str = os.getenv("AASIST_MODEL_PATH", "model/aasist_truvoice_epoch6_best.pth")
     AASIST_THRESHOLD: float = float(os.getenv("AASIST_THRESHOLD", "0.5"))
+    AASIST_TEMPERATURE: float = float(os.getenv("AASIST_TEMPERATURE", "15.0"))
+    AASIST_MIN_RMS: float = float(os.getenv("AASIST_MIN_RMS", "0.003"))
+
 
 settings = Settings()
