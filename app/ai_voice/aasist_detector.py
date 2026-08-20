@@ -110,10 +110,20 @@ class AASISTDetector:
             # Temperature scaling on logits to prevent extreme probability saturation on live audio
             scaled_logits = logits / self.temperature
             probabilities = torch.softmax(scaled_logits, dim=1)
-            bonafide_prob = float(probabilities[0, 0].item())
-            spoof_prob = float(probabilities[0, 1].item())
+
+            # Verified ASVspoof 2019 AASIST Class Mapping:
+            # Class 0 = SPOOF / AI-GENERATED
+            # Class 1 = BONAFIDE / HUMAN
+            spoof_prob = float(probabilities[0, 0].item())      # AI / SPOOF probability
+            bonafide_prob = float(probabilities[0, 1].item())   # HUMAN / BONAFIDE probability
 
         prediction = "spoof" if spoof_prob >= self.threshold else "bonafide"
+
+        logger.debug(
+            f"AASIST logits: class_0_spoof={logits[0, 0].item():.4f}, class_1_bonafide={logits[0, 1].item():.4f} | "
+            f"AI/Spoof Prob={spoof_prob * 100:.2f}%, Human/Bonafide Prob={bonafide_prob * 100:.2f}% | "
+            f"Prediction={prediction.upper()}"
+        )
 
         return {
             "spoof_probability": spoof_prob,
