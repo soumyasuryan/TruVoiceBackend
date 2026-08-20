@@ -3,4 +3,6 @@
 /supabase
 __pycache__/
 *.pth
-test_sample.wav
+test_sample.wav
+test_speech.wav
+
