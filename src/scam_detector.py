@@ -17,7 +17,7 @@ class GroqScamDetector:
 
         self.client = Groq(api_key=self.api_key)
         self.whisper_model = "whisper-large-v3-turbo"
-        self.llm_model = "llama-3.3-70b-versatile"
+        self.llm_model = "openai/gpt-oss-20b"
 
     def _is_whisper_hallucination(self, text: str) -> bool:
         if not text:
@@ -93,9 +93,9 @@ JSON format:
         # Active Groq models list
         models_to_try = [
             self.llm_model,
-            "llama-3.3-70b-specdec",
-            "llama-3.2-3b-preview",
-            "llama-3.2-1b-preview",
+            "qwen/qwen3.6-27b",
+            "openai/gpt-oss-120b",
+            "groq/compound-mini",
         ]
         last_error = None
 

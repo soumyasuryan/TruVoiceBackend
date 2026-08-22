@@ -107,8 +107,8 @@ class VoiceDetector:
 
         prediction = "spoof" if spoof_prob >= self.threshold else "bonafide"
 
-        logger.debug(
-            f"VoiceDetector logits: {logits.tolist()} | AI/Spoof={spoof_prob * 100:.2f}%, Human={bonafide_prob * 100:.2f}% | Prediction={prediction.upper()}"
+        logger.info(
+            f"[VOICE MODEL] Inference result: AI={spoof_prob * 100:.2f}%, Human={bonafide_prob * 100:.2f}% | RMS Energy={rms_energy:.5f} | Prediction={prediction.upper()}"
         )
 
         return {

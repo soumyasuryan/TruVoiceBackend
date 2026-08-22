@@ -78,6 +78,13 @@ class UnifiedPipelineTester:
             risk_level = "SAFE"
             threat_type = "NORMAL"
             ui_alert = "This call looks safe."
+
+        logger.info(
+            f"[PIPELINE SUMMARY] File: {os.path.basename(audio_path)} | AI Voice: {ai_voice_prob * 100:.2f}% | "
+            f"Scam Intent: {scam_text_score * 100:.2f}% | Unified Risk: {unified_risk * 100:.2f}% | "
+            f"Level: {risk_level} | Threat: {threat_type}"
+        )
+
         return {
             "file_name": os.path.basename(audio_path),
             "transcript": nlp_result.get("transcript", ""),
