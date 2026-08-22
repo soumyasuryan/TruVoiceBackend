@@ -12,6 +12,7 @@ if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
 from app.services.local_stt import LocalSTTSanitizer
+from app.config import settings
 
 SUPPORTED_EXTENSIONS = {".wav", ".mp3",".mp4", ".m4a", ".flac", ".ogg", ".opus", ".mpeg", ".webm"}
 
@@ -19,7 +20,11 @@ SUPPORTED_EXTENSIONS = {".wav", ".mp3",".mp4", ".m4a", ".flac", ".ogg", ".opus",
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Print sanitized local Whisper transcripts and timings.")
     parser.add_argument("path", nargs="?", default="test_voice", help="Audio file or directory (default: test_voice)")
-    parser.add_argument("--model", default="small", help="faster-whisper model name or local model path")
+    parser.add_argument(
+        "--model",
+        default=settings.STT_MODEL_SIZE,
+        help="faster-whisper model name or local model path",
+    )
     parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     parser.add_argument("--strict-gpu", action="store_true", help="Fail instead of falling back to CPU")
     return parser.parse_args()

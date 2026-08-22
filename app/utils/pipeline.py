@@ -70,6 +70,7 @@ class UnifiedPipelineTester:
         # Single-factor spikes (AI-only or Scam-only) properly elevate risk
         # instead of being suppressed like in a pure multiplicative model.
         unified_risk = (max(ai_voice_prob, scam_text_score) * 0.7) + ((ai_voice_prob * scam_text_score) * 0.3)
+        trust_score = max(0.0, min(100.0, 100.0 - (unified_risk * 100.0)))
 
         # Step 5: Threat Classification & UI Alert Messaging
         if ai_voice_prob >= 0.65 and scam_text_score >= 0.60:
@@ -103,6 +104,7 @@ class UnifiedPipelineTester:
             "ai_voice_probability": round(ai_voice_prob * 100, 2),
             "scam_intent_score": round(scam_text_score * 100, 2),
             "unified_risk_score": round(unified_risk * 100, 2),
+            "trust_score": round(trust_score, 2),
             "risk_level": risk_level,
             "threat_type": threat_type,
             "ui_alert": ui_alert,

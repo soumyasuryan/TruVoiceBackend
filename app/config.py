@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     VOICE_THRESHOLD: float = float(os.getenv("VOICE_THRESHOLD", "0.5"))
     VOICE_MIN_RMS: float = float(os.getenv("VOICE_MIN_RMS", "0.003"))
 
+    # Local GPU transcription and PII sanitization (faster-whisper).
+    # large-v3-turbo provides a strong accuracy/latency balance on the RTX 4050.
+    STT_MODEL_SIZE: str = os.getenv("STT_MODEL_SIZE", "large-v3-turbo")
+    STT_COMPUTE_TYPE: str = os.getenv("STT_COMPUTE_TYPE", "float16")
+
 settings = Settings()
 
 

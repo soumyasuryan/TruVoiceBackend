@@ -48,6 +48,7 @@ class AudioAnalysisResponse(BaseModel):
     ai_voice_probability: float
     scam_intent_score: float
     unified_risk_score: float
+    trust_score: float
     risk_level: str
     scam_category: str
     flagged_keywords: list[str]

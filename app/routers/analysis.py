@@ -84,7 +84,7 @@ async def analyze_base64_audio(
         if payload.call_id:
             await manager.broadcast_to_call(payload.call_id, {
                 "type": "analysis_update",
-                "trust_score": round(max(0.0, 100.0 - result.get("unified_risk_score", 0.0)), 1),
+                "trust_score": result.get("trust_score", round(max(0.0, 100.0 - result.get("unified_risk_score", 0.0)), 1)),
                 "confidence": 95.0,
                 "risk_level": result.get("risk_level", "SAFE"),
                 "threat_type": result.get("threat_type", "NORMAL"),
@@ -144,4 +144,3 @@ def _save_analysis_history(user_id: str, caller_number: str | None, result: dict
         ).execute()
     except Exception as exc:
         logger.warning(f"Could not save call analysis history to database: {exc}")
-

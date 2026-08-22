@@ -18,6 +18,7 @@ from faster_whisper import WhisperModel
 from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,13 @@ class LocalSTTSanitizer:
 
     def __init__(
         self,
-        model_size: str = "small",
+        model_size: str | None = None,
         device: str = "auto",
-        compute_type: str = "float16",
+        compute_type: str | None = None,
         allow_cpu_fallback: bool = True,
     ) -> None:
+        model_size = model_size or settings.STT_MODEL_SIZE
+        compute_type = compute_type or settings.STT_COMPUTE_TYPE
         requested_device = self._resolve_device(device)
         requested_compute_type = compute_type if requested_device == "cuda" else "int8"
         self.model_size = model_size
