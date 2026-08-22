@@ -3,6 +3,7 @@ import os
 from typing import Optional
 
 from app.ai_voice.voice_detector import VoiceDetector
+from app.services.local_stt import get_local_stt
 from app.config import settings
 from src.scam_detector import GroqScamDetector
 
@@ -38,6 +39,9 @@ class UnifiedPipelineTester:
 
         # Initialize Groq NLP Scam Intent Detector
         self.scam_detector = GroqScamDetector(api_key=settings.GROQ_API_KEY)
+        
+        # Initialize Local STT and Sanitizer
+        self.local_stt = get_local_stt()
 
     def analyze_audio_sample(self, audio_path: str) -> dict:
         """
@@ -52,16 +56,22 @@ class UnifiedPipelineTester:
         voice_result = self.voice_detector.predict(audio_path)
         ai_voice_prob = float(voice_result.get("spoof_probability", 0.0))  # 0.0 to 1.0
 
-        # Step 2: Groq NLP Scam Intent Detection
-        nlp_result = self.scam_detector.run(audio_path)
+        # Step 2: Local STT & PII Sanitization
+        stt_result = self.local_stt.process_audio(audio_path)
+        sanitized_transcript = stt_result.get("sanitized_transcript", "")
+        raw_transcript = stt_result.get("raw_transcript", "")
+        stt_latency_sec = stt_result.get("stt_latency_sec", 0.0)
+
+        # Step 3: Groq NLP Scam Intent Detection (using sanitized transcript)
+        nlp_result = self.scam_detector.analyze_scam_intent(sanitized_transcript)
         scam_text_score = float(nlp_result.get("scam_score", 0.0))  # 0.0 to 1.0
 
-        # Step 3: Unified Risk Score — Max-Weighted Hybrid Formula
+        # Step 4: Unified Risk Score — Max-Weighted Hybrid Formula
         # Single-factor spikes (AI-only or Scam-only) properly elevate risk
         # instead of being suppressed like in a pure multiplicative model.
         unified_risk = (max(ai_voice_prob, scam_text_score) * 0.7) + ((ai_voice_prob * scam_text_score) * 0.3)
 
-        # Step 4: Threat Classification & UI Alert Messaging
+        # Step 5: Threat Classification & UI Alert Messaging
         if ai_voice_prob >= 0.65 and scam_text_score >= 0.60:
             risk_level = "SEVERE"
             threat_type = "AI_CLONE_SCAM"
@@ -87,7 +97,9 @@ class UnifiedPipelineTester:
 
         return {
             "file_name": os.path.basename(audio_path),
-            "transcript": nlp_result.get("transcript", ""),
+            "transcript": sanitized_transcript,
+            "raw_transcript": raw_transcript,
+            "stt_latency_sec": round(stt_latency_sec, 2),
             "ai_voice_probability": round(ai_voice_prob * 100, 2),
             "scam_intent_score": round(scam_text_score * 100, 2),
             "unified_risk_score": round(unified_risk * 100, 2),
