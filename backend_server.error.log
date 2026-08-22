@@ -1,0 +1,60 @@
+2026-08-23 01:45:54,776 [INFO] presidio-analyzer: Using device of type: cuda
+INFO:     Started server process [16460]
+INFO:     Waiting for application startup.
+2026-08-23 01:45:56,438 [INFO] truvoice: ======================================================================
+2026-08-23 01:45:56,438 [INFO] truvoice:   TRUVOICE BACKEND STARTUP
+2026-08-23 01:45:56,438 [INFO] truvoice:   Target Voice Model : model/best_model_fold4.pth
+2026-08-23 01:45:56,438 [INFO] truvoice: ======================================================================
+2026-08-23 01:45:57,910 [INFO] app.ai_voice.voice_detector: VoiceDetector initialized successfully from 'model/best_model_fold4.pth' on device 'cuda'.
+2026-08-23 01:45:57,921 [INFO] app.services.local_stt: Loading faster-whisper model 'small' on cuda (float16)...
+2026-08-23 01:45:58,411 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-small/revision/main "HTTP/1.1 200 OK"
+2026-08-23 01:45:59,676 [INFO] app.services.local_stt: Initializing Presidio Analyzer and Anonymizer...
+2026-08-23 01:46:00,101 [WARNING] presidio-analyzer: Failed to enable GPU (cuda), falling back to CPU: Cannot use GPU, CuPy is not installed
+2026-08-23 01:46:00,506 [INFO] presidio-analyzer: Created NLP engine: spacy. Loaded models: ['en']
+2026-08-23 01:46:00,506 [INFO] presidio-analyzer: registry not provided, creating default.
+2026-08-23 01:46:00,576 [INFO] presidio-analyzer: Loaded recognizer: CreditCardRecognizer
+2026-08-23 01:46:00,577 [INFO] presidio-analyzer: Loaded recognizer: CreditCardRecognizer
+2026-08-23 01:46:00,577 [INFO] presidio-analyzer: Loaded recognizer: CreditCardRecognizer
+2026-08-23 01:46:00,578 [INFO] presidio-analyzer: Loaded recognizer: CreditCardRecognizer
+2026-08-23 01:46:00,578 [INFO] presidio-analyzer: Loaded recognizer: UsBankRecognizer
+2026-08-23 01:46:00,579 [INFO] presidio-analyzer: Loaded recognizer: UsLicenseRecognizer
+2026-08-23 01:46:00,579 [INFO] presidio-analyzer: Loaded recognizer: UsItinRecognizer
+2026-08-23 01:46:00,579 [INFO] presidio-analyzer: Loaded recognizer: UsPassportRecognizer
+2026-08-23 01:46:00,579 [INFO] presidio-analyzer: Loaded recognizer: UsSsnRecognizer
+2026-08-23 01:46:00,581 [INFO] presidio-analyzer: Loaded recognizer: NhsRecognizer
+2026-08-23 01:46:00,581 [INFO] presidio-analyzer: Loaded recognizer: EsNifRecognizer
+2026-08-23 01:46:00,581 [INFO] presidio-analyzer: Loaded recognizer: EsNieRecognizer
+2026-08-23 01:46:00,581 [INFO] presidio-analyzer: Loaded recognizer: ItDriverLicenseRecognizer
+2026-08-23 01:46:00,581 [INFO] presidio-analyzer: Loaded recognizer: ItFiscalCodeRecognizer
+2026-08-23 01:46:00,581 [INFO] presidio-analyzer: Loaded recognizer: ItVatCodeRecognizer
+2026-08-23 01:46:00,581 [INFO] presidio-analyzer: Loaded recognizer: ItIdentityCardRecognizer
+2026-08-23 01:46:00,584 [INFO] presidio-analyzer: Loaded recognizer: ItPassportRecognizer
+2026-08-23 01:46:00,584 [INFO] presidio-analyzer: Loaded recognizer: PlPeselRecognizer
+2026-08-23 01:46:00,584 [INFO] presidio-analyzer: Loaded recognizer: CryptoRecognizer
+2026-08-23 01:46:00,584 [INFO] presidio-analyzer: Loaded recognizer: DateRecognizer
+2026-08-23 01:46:00,585 [INFO] presidio-analyzer: Loaded recognizer: EmailRecognizer
+2026-08-23 01:46:00,585 [INFO] presidio-analyzer: Loaded recognizer: IbanRecognizer
+2026-08-23 01:46:00,585 [INFO] presidio-analyzer: Loaded recognizer: IpRecognizer
+2026-08-23 01:46:00,587 [INFO] presidio-analyzer: Loaded recognizer: MedicalLicenseRecognizer
+2026-08-23 01:46:00,587 [INFO] presidio-analyzer: Loaded recognizer: MacAddressRecognizer
+2026-08-23 01:46:00,587 [INFO] presidio-analyzer: Loaded recognizer: PhoneRecognizer
+2026-08-23 01:46:00,587 [INFO] presidio-analyzer: Loaded recognizer: UrlRecognizer
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - CreditCardRecognizer supported languages: es, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - CreditCardRecognizer supported languages: it, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - CreditCardRecognizer supported languages: pl, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - EsNifRecognizer supported languages: es, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - EsNieRecognizer supported languages: es, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - ItDriverLicenseRecognizer supported languages: it, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - ItFiscalCodeRecognizer supported languages: it, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - ItVatCodeRecognizer supported languages: it, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - ItIdentityCardRecognizer supported languages: it, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - ItPassportRecognizer supported languages: it, registry supported languages: en
+2026-08-23 01:46:00,588 [WARNING] presidio-analyzer: Recognizer not added to registry because language is not supported by registry - PlPeselRecognizer supported languages: pl, registry supported languages: en
+2026-08-23 01:46:00,588 [INFO] presidio-analyzer: Loaded recognizer: SpacyRecognizer
+2026-08-23 01:46:00,592 [INFO] presidio-analyzer: Loaded recognizer: bank_account_number_recognizer
+2026-08-23 01:46:00,598 [INFO] presidio-analyzer: Loaded recognizer: date_of_birth_recognizer
+2026-08-23 01:46:00,600 [INFO] presidio-analyzer: Loaded recognizer: account_holder_name_recognizer
+2026-08-23 01:46:00,600 [INFO] truvoice:   [SUCCESS] VoiceDetector active: model/best_model_fold4.pth (Device: cuda)
+2026-08-23 01:46:00,600 [INFO] truvoice: ======================================================================
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

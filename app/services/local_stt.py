@@ -98,7 +98,7 @@ class LocalSTTSanitizer:
     def _register_domain_recognizers(self) -> None:
         """Add India-friendly patterns missed by Presidio's default recognizers.
 
-        Account numbers commonly appear in voice transcripts as 8--18 plain
+        Account numbers commonly appear in voice transcripts as 6--18 plain
         digits. Dates are only marked as DOB when a nearby DOB-related phrase
         raises the recognizer confidence, preventing ordinary amounts such as
         ``5,543 rupees`` from being redacted.
@@ -110,7 +110,7 @@ class LocalSTTSanitizer:
                 patterns=[
                     Pattern(
                         name="account_number",
-                        regex=r"(?<!\d)(?:\d[ -]?){7,17}\d(?!\d)",
+                        regex=r"(?<!\d)(?:\d[ -]?){5,17}\d(?!\d)",
                         score=0.85,
                     )
                 ],
@@ -137,8 +137,41 @@ class LocalSTTSanitizer:
                         regex=r"\b(?:0?[1-9]|1[0-2])[-/.](?:0?[1-9]|[12]\d|3[01])[-/.](?:19|20)\d{2}\b",
                         score=0.75,
                     ),
+                    Pattern(
+                        name="written_date_day_first",
+                        regex=(
+                            r"\b(?:0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s+"
+                            r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+                            r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+                            r"nov(?:ember)?|dec(?:ember)?)\s+(?:19|20)\d{2}\b"
+                        ),
+                        score=0.75,
+                    ),
                 ],
-                context=["date of birth", "dob", "born", "birth date"],
+                context=["date of birth", "date birth", "dob", "born", "birth date"],
+            )
+        )
+        self.analyzer.registry.add_recognizer(
+            PatternRecognizer(
+                supported_entity="PERSON",
+                name="account_holder_name_recognizer",
+                patterns=[
+                    Pattern(
+                        name="account_handler_name",
+                        regex=r"(?<=account handler is )[A-Za-z][A-Za-z' -]{1,80}(?=[.,;]|$)",
+                        score=0.9,
+                    ),
+                    Pattern(
+                        name="account_holder_name",
+                        regex=r"(?<=account holder is )[A-Za-z][A-Za-z' -]{1,80}(?=[.,;]|$)",
+                        score=0.9,
+                    ),
+                    Pattern(
+                        name="registered_account_name",
+                        regex=r"(?<=registered to )[A-Za-z][A-Za-z' -]{1,80}(?=[.,;]|$)",
+                        score=0.9,
+                    ),
+                ],
             )
         )
 
