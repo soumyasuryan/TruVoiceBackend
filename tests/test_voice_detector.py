@@ -107,8 +107,8 @@ class TestVoiceDetector(unittest.TestCase):
         self.assertIsInstance(ai_score, float)
         self.assertIsInstance(scam_score, float)
         self.assertIsInstance(unified, float)
-        self.assertIn(risk_level, ["CRITICAL RISK", "HIGH RISK", "LOW RISK"])
-        self.assertIn(threat_type, ["AI_VOICE_SCAM", "AI_SYNTHETIC_VOICE", "HUMAN_VISHING_SCAM", "SAFE"])
+        self.assertIn(risk_level, ["SEVERE", "MODERATE", "SAFE"])
+        self.assertIn(threat_type, ["AI_CLONE_SCAM", "GENERATED_VOICE", "SUSPICIOUS_CALLER", "NORMAL"])
         self.assertTrue(len(ui_alert) > 0)
 
         # Verify hybrid formula: unified = max(ai,scam)*0.7 + (ai*scam)*0.3
@@ -194,13 +194,13 @@ class TestHybridScoringModel(unittest.TestCase):
         ai = ai_pct / 100.0
         scam = scam_pct / 100.0
         if ai >= 0.65 and scam >= 0.60:
-            return "CRITICAL RISK", "AI_VOICE_SCAM", "CRITICAL: High Risk AI Voice Scam Detected!"
+            return "SEVERE", "AI_CLONE_SCAM", "DANGER: Fake AI Voice Scam Call!"
         elif ai >= 0.65 and scam < 0.60:
-            return "HIGH RISK", "AI_SYNTHETIC_VOICE", "STAY ALERT: Synthetic / AI Voice Detected"
+            return "MODERATE", "GENERATED_VOICE", "CAUTION: Caller is using a computer-generated voice"
         elif ai < 0.65 and scam >= 0.60:
-            return "HIGH RISK", "HUMAN_VISHING_SCAM", "STAY ALERT: Intent Sounds Scrammy"
+            return "MODERATE", "SUSPICIOUS_CALLER", "CAUTION: Conversation shows signs of a scam"
         else:
-            return "LOW RISK", "SAFE", "Call context appears safe."
+            return "SAFE", "NORMAL", "This call looks safe."
 
     def _print_scenario(self, label, ai, scam, unified, risk, threat, alert):
         print(
@@ -220,9 +220,9 @@ class TestHybridScoringModel(unittest.TestCase):
         self._print_scenario("Scenario 1: AI Voice + Scam Intent", ai, scam, unified, risk, threat, alert)
 
         self.assertAlmostEqual(unified, 87.3, places=1)
-        self.assertEqual(risk, "CRITICAL RISK")
-        self.assertEqual(threat, "AI_VOICE_SCAM")
-        self.assertEqual(alert, "CRITICAL: High Risk AI Voice Scam Detected!")
+        self.assertEqual(risk, "SEVERE")
+        self.assertEqual(threat, "AI_CLONE_SCAM")
+        self.assertEqual(alert, "DANGER: Fake AI Voice Scam Call!")
 
     def test_scenario_2_high_ai_low_scam(self):
         """HIGH AI (90%) + LOW Scam (10%) => HIGH RISK ~65.70%"""
@@ -233,9 +233,9 @@ class TestHybridScoringModel(unittest.TestCase):
         self._print_scenario("Scenario 2: AI Voice + Legit Intent", ai, scam, unified, risk, threat, alert)
 
         self.assertAlmostEqual(unified, 65.7, places=1)
-        self.assertEqual(risk, "HIGH RISK")
-        self.assertEqual(threat, "AI_SYNTHETIC_VOICE")
-        self.assertEqual(alert, "STAY ALERT: Synthetic / AI Voice Detected")
+        self.assertEqual(risk, "MODERATE")
+        self.assertEqual(threat, "GENERATED_VOICE")
+        self.assertEqual(alert, "CAUTION: Caller is using a computer-generated voice")
 
     def test_scenario_3_low_ai_high_scam(self):
         """LOW AI (10%) + HIGH Scam (90%) => HIGH RISK ~65.70%"""
@@ -246,9 +246,9 @@ class TestHybridScoringModel(unittest.TestCase):
         self._print_scenario("Scenario 3: Human Voice + Scam Intent", ai, scam, unified, risk, threat, alert)
 
         self.assertAlmostEqual(unified, 65.7, places=1)
-        self.assertEqual(risk, "HIGH RISK")
-        self.assertEqual(threat, "HUMAN_VISHING_SCAM")
-        self.assertEqual(alert, "STAY ALERT: Intent Sounds Scrammy")
+        self.assertEqual(risk, "MODERATE")
+        self.assertEqual(threat, "SUSPICIOUS_CALLER")
+        self.assertEqual(alert, "CAUTION: Conversation shows signs of a scam")
 
     def test_scenario_4_low_ai_low_scam(self):
         """LOW AI (10%) + LOW Scam (10%) => LOW RISK ~7.30%"""
@@ -260,9 +260,9 @@ class TestHybridScoringModel(unittest.TestCase):
         print("=" * 130 + "\n")
 
         self.assertAlmostEqual(unified, 7.3, places=1)
-        self.assertEqual(risk, "LOW RISK")
-        self.assertEqual(threat, "SAFE")
-        self.assertEqual(alert, "Call context appears safe.")
+        self.assertEqual(risk, "SAFE")
+        self.assertEqual(threat, "NORMAL")
+        self.assertEqual(alert, "This call looks safe.")
 
 
 if __name__ == "__main__":
