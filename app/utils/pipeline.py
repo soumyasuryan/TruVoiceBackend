@@ -1,9 +1,8 @@
 import logging
 import os
-import sys
-import joblib
-import librosa
-import numpy as np
+from typing import Optional
+
+from app.ai_voice.voice_detector import VoiceDetector
 from app.config import settings
 from src.scam_detector import GroqScamDetector
 
@@ -11,96 +10,74 @@ logger = logging.getLogger(__name__)
 
 
 class UnifiedPipelineTester:
-    def __init__(self, model_path: str = "model/voice_detector_model.pkl"):
-        if not os.path.exists(model_path):
-            error_msg = f"Model file not found at '{model_path}'."
+    """
+    Unified AI Analysis Pipeline:
+    1. AI Voice Detection: Neural Wav2Vec2 deepfake detector (best_model_fold4.pth).
+    2. Scam Intent Detection: Groq Whisper + LLaMA NLP transcript analysis.
+    3. Output Standardization: Computes unified risk and returns standardized dictionary containing '% ai detected'.
+    """
+
+    def __init__(self, model_path: Optional[str] = None):
+        target_model_path = model_path or settings.VOICE_MODEL_PATH
+
+        if not os.path.exists(target_model_path):
+            error_msg = f"Voice detection model checkpoint not found: {target_model_path}"
             logger.error(error_msg)
             raise FileNotFoundError(error_msg)
 
-        self.acoustic_model = joblib.load(model_path)
+        # Initialize Neural Voice Detector (Wav2Vec2 backbone)
+        self.voice_detector = VoiceDetector(
+            model_path=target_model_path,
+            device="auto",
+            threshold=settings.VOICE_THRESHOLD,
+            min_rms=settings.VOICE_MIN_RMS,
+        )
 
         if not settings.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY environment variable is missing.")
 
+        # Initialize Groq NLP Scam Intent Detector
         self.scam_detector = GroqScamDetector(api_key=settings.GROQ_API_KEY)
-
-    def extract_acoustic_features(self, audio_array: np.ndarray, sr: int = 16000) -> np.ndarray:
-        """
-        Extracts 47 acoustic features (F0 pitch statistics, spectral centroid, spectral rolloff, ZCR, MFCCs)
-        matching the exact feature structure expected by the XGBoost acoustic model.
-        """
-        # Peak normalize waveform
-        max_val = float(np.max(np.abs(audio_array))) if len(audio_array) > 0 else 0.0
-        if max_val > 1.0:
-            audio_array = audio_array / max_val
-        elif 0.0 < max_val < 0.1:
-            audio_array = audio_array / (max_val + 1e-8)
-
-        # F0 pitch estimation with fallback for unvoiced / noisy speech frames
-        try:
-            f0, _, _ = librosa.pyin(
-                audio_array,
-                fmin=librosa.note_to_hz("C2"),
-                fmax=librosa.note_to_hz("C7"),
-                sr=sr,
-            )
-            f0_clean = f0[~np.isnan(f0)] if f0 is not None else np.array([])
-        except Exception:
-            f0_clean = np.array([])
-
-        if len(f0_clean) > 0:
-            pitch_mean = float(np.mean(f0_clean))
-            pitch_std = float(np.std(f0_clean))
-            pitch_max = float(np.max(f0_clean))
-            pitch_min = float(np.min(f0_clean))
-        else:
-            # Human vocal pitch baseline (130 Hz) for unvoiced or quiet speech frames
-            pitch_mean = 130.0
-            pitch_std = 15.0
-            pitch_max = 180.0
-            pitch_min = 90.0
-
-        mfcc = librosa.feature.mfcc(y=audio_array, sr=sr, n_mfcc=20)
-        mfcc_mean = np.mean(mfcc, axis=1)
-        mfcc_std = np.std(mfcc, axis=1)
-
-        spec_centroid = float(np.mean(librosa.feature.spectral_centroid(y=audio_array, sr=sr)))
-        spec_rolloff = float(np.mean(librosa.feature.spectral_rolloff(y=audio_array, sr=sr)))
-        zcr = float(np.mean(librosa.feature.zero_crossing_rate(y=audio_array)))
-
-        features = np.hstack([pitch_mean, pitch_std, pitch_max, pitch_min, spec_centroid, spec_rolloff, zcr, mfcc_mean, mfcc_std])
-        return features.reshape(1, -1)
 
     def analyze_audio_sample(self, audio_path: str) -> dict:
         """
-        Executes XGBoost acoustic AI voice detection + Groq NLP scam intent detection.
-        Applies RMS energy silence gate and probability calibration for live call streams.
+        Executes dual AI analysis pipeline:
+        1. AI-Voice Detection -> Returns % ai detected (ai_voice_probability in range [0.0, 100.0]).
+        2. Groq Scam Intent Detection -> Returns scam_intent_score in range [0.0, 100.0].
+        3. Unified Risk Formula -> Max-Weighted Hybrid:
+           unified = max(ai, scam) * 0.7  +  (ai * scam) * 0.3
+        4. Threat Classification -> risk_level, threat_type, ui_alert based on threshold matrix.
         """
-        audio_array, sr = librosa.load(audio_path, sr=16000, mono=True)
-        rms_energy = float(np.sqrt(np.mean(audio_array**2))) if len(audio_array) > 0 else 0.0
+        # Step 1: Neural Voice Deepfake Detection
+        voice_result = self.voice_detector.predict(audio_path)
+        ai_voice_prob = float(voice_result.get("spoof_probability", 0.0))  # 0.0 to 1.0
 
-        # Silence / ambient noise gate (RMS < 0.008 -> 0% AI Voice probability)
-        if rms_energy < 0.008:
-            ai_voice_prob = 0.0
-        else:
-            X_features = self.extract_acoustic_features(audio_array, sr=sr)
-            raw_prob = float(self.acoustic_model.predict_proba(X_features)[0][1])
-
-            # Probability calibration for live microphone stream audio
-            # Softens uncalibrated raw scores (<0.65 -> scaled down to prevent false deepfake alerts)
-            if raw_prob < 0.65:
-                ai_voice_prob = raw_prob * 0.35
-            else:
-                ai_voice_prob = raw_prob
-
-        # Groq NLP scam intent analysis (Unchanged)
+        # Step 2: Groq NLP Scam Intent Detection
         nlp_result = self.scam_detector.run(audio_path)
-        scam_text_score = float(nlp_result.get("scam_score", 0.0))
+        scam_text_score = float(nlp_result.get("scam_score", 0.0))  # 0.0 to 1.0
 
-        # Unified risk score calculation (Unchanged)
-        unified_risk = (0.5 * ai_voice_prob) + (0.5 * scam_text_score)
-        risk_level = "CRITICAL RISK" if unified_risk >= 0.7 else "MEDIUM RISK" if unified_risk >= 0.35 else "LOW RISK"
+        # Step 3: Unified Risk Score — Max-Weighted Hybrid Formula
+        # Single-factor spikes (AI-only or Scam-only) properly elevate risk
+        # instead of being suppressed like in a pure multiplicative model.
+        unified_risk = (max(ai_voice_prob, scam_text_score) * 0.7) + ((ai_voice_prob * scam_text_score) * 0.3)
 
+        # Step 4: Threat Classification & UI Alert Messaging
+        if ai_voice_prob >= 0.65 and scam_text_score >= 0.60:
+            risk_level = "SEVERE"
+            threat_type = "AI_CLONE_SCAM"
+            ui_alert = "DANGER: Fake AI Voice Scam Call!"
+        elif ai_voice_prob >= 0.65 and scam_text_score < 0.60:
+            risk_level = "MODERATE"
+            threat_type = "GENERATED_VOICE"
+            ui_alert = "CAUTION: Caller is using a computer-generated voice"
+        elif ai_voice_prob < 0.65 and scam_text_score >= 0.60:
+            risk_level = "MODERATE"
+            threat_type = "SUSPICIOUS_CALLER"
+            ui_alert = "CAUTION: Conversation shows signs of a scam"
+        else:
+            risk_level = "SAFE"
+            threat_type = "NORMAL"
+            ui_alert = "This call looks safe."
         return {
             "file_name": os.path.basename(audio_path),
             "transcript": nlp_result.get("transcript", ""),
@@ -108,6 +85,8 @@ class UnifiedPipelineTester:
             "scam_intent_score": round(scam_text_score * 100, 2),
             "unified_risk_score": round(unified_risk * 100, 2),
             "risk_level": risk_level,
+            "threat_type": threat_type,
+            "ui_alert": ui_alert,
             "scam_category": nlp_result.get("category", "N/A"),
             "flagged_keywords": nlp_result.get("risk_keywords", []),
             "reasoning": nlp_result.get("reasoning", ""),

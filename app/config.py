@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     VOICE_ANALYSIS_CHUNK_SECONDS: float = float(os.getenv("VOICE_ANALYSIS_CHUNK_SECONDS", "3.0"))
     VOICE_ANALYSIS_INTERVAL_SECONDS: float = float(os.getenv("VOICE_ANALYSIS_INTERVAL_SECONDS", "3.0"))
 
+    # Neural Deepfake Voice Detector Settings (Wav2Vec2)
+    VOICE_MODEL_PATH: str = os.getenv("VOICE_MODEL_PATH", "model/best_model_fold4.pth")
+    VOICE_THRESHOLD: float = float(os.getenv("VOICE_THRESHOLD", "0.5"))
+    VOICE_MIN_RMS: float = float(os.getenv("VOICE_MIN_RMS", "0.003"))
+
 settings = Settings()
 
 

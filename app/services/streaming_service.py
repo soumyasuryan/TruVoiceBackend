@@ -128,6 +128,8 @@ class VoiceStreamSession:
                 "trust_score": trust_score,
                 "confidence": round(min(99.0, 50.0 + len(full_transcript.split()) * 1.5), 2),
                 "risk_level": risk_level,
+                "threat_type": analysis.get("threat_type", "NORMAL"),
+                "ui_alert": analysis.get("ui_alert", "This call looks safe."),
                 "unified_risk_score": unified_risk,
                 "scam_intent_score": scam_score,
                 "ai_voice_probability": ai_prob,
@@ -141,13 +143,14 @@ class VoiceStreamSession:
             # Broadcast live analysis update to subscribers
             await manager.broadcast_to_call(self.call_id, payload)
 
-            # Send risk alert if threat level is HIGH or CRITICAL
-            if risk_level in ["HIGH RISK", "CRITICAL RISK"] or is_scam:
+            # Send risk alert if threat level is SEVERE or MODERATE
+            if risk_level in ["SEVERE", "MODERATE"] or is_scam:
                 alert_payload = {
                     "type": "risk_alert",
                     "call_id": self.call_id,
                     "risk_level": risk_level,
-                    "message": f"Suspicious activity detected: {analysis.get('reasoning', 'Potential scam or phishing request.')}"
+                    "threat_type": analysis.get("threat_type", "NORMAL"),
+                    "message": analysis.get("ui_alert", f"Suspicious activity detected: {analysis.get('reasoning', 'Potential scam or phishing request.')}")
                 }
                 await manager.broadcast_to_call(self.call_id, alert_payload)
 
