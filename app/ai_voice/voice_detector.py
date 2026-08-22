@@ -101,9 +101,9 @@ class VoiceDetector:
             logits = self.model(waveform)
             probabilities = torch.softmax(logits, dim=1)
 
-            # Class mapping: Class 0 = Bonafide / Human; Class 1 = Spoof / AI
-            bonafide_prob = float(probabilities[0, 0].item())
-            spoof_prob = float(probabilities[0, 1].item())
+            # Class mapping: Class 0 = Spoof / AI; Class 1 = Bonafide / Human
+            spoof_prob = float(probabilities[0, 0].item())
+            bonafide_prob = float(probabilities[0, 1].item())
 
         prediction = "spoof" if spoof_prob >= self.threshold else "bonafide"
 
