@@ -4,55 +4,80 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _compute_uid(user_id: str) -> int:
+    """
+    Deterministic numeric UID computed from a user UUID string.
+    MUST produce the identical value as agoraService.js _computeUid() so the token
+    covers the exact UID that the frontend passes to joinChannel().
+    """
+    uid = 0
+    for i, ch in enumerate(str(user_id)):
+        uid = (uid + (i + 1) * ord(ch)) % 1_000_000_000
+    return uid + 1
+
+
 def generate_rtc_token(channel_name: str, user_id: str, expiration_time_in_seconds: int = 3600) -> str:
     """
-    Generates a secure Agora RTC Token for joining a specified audio channel.
-    Uses a stable, deterministic numeric UID computed from user_id. The JS _computeUid()
-    function in agoraService.js must produce the identical value for the token to be valid.
-    Token is ALWAYS built with the numeric UID — never with a string user account —
-    to match what the frontend passes to joinChannel(token, channel, numericUid, ...).
+    Generates an Agora AccessToken2 ("007..." format) for joining a voice channel.
+
+    Uses Agora's official AccessToken2 algorithm implemented in `app.agora_token`,
+    which generates the 007... token format required by react-native-agora 4.x.
     """
     app_id = settings.AGORA_APP_ID
     app_certificate = settings.AGORA_APP_CERTIFICATE
 
     if not app_id or not app_certificate:
         logger.warning(
-            "AGORA_APP_ID or AGORA_APP_CERTIFICATE missing from settings. "
-            "Both must be set in .env for Agora tokens to work. "
-            "Returning placeholder — media will NOT connect in production."
+            "AGORA_APP_ID or AGORA_APP_CERTIFICATE is missing from .env. "
+            "Returning placeholder token — Agora media will NOT work."
         )
         return f"agora_dev_token_{channel_name}_{user_id}"
 
-    privilege_expired_ts = int(time.time()) + expiration_time_in_seconds
+    uid_value = _compute_uid(user_id)
 
-    # Compute deterministic numeric UID — MUST match agoraService.js _computeUid()
-    uid_value = 1
-    if user_id:
-        source = str(user_id)
-        uid_value = (sum((i + 1) * ord(ch) for i, ch in enumerate(source)) % 1000000000) + 1
+    logger.info(
+        f"Generating Agora AccessToken2: channel={channel_name}, "
+        f"userId={user_id[:8]}..., uid={uid_value}, "
+        f"appId={app_id[:8]}..."
+    )
 
-    logger.info(f"Generating Agora RTC token: channel={channel_name}, userId={user_id}, uid={uid_value}")
-
+    # --- Primary: app.agora_token official Agora AccessToken2 builder ---
     try:
-        from agora_token_builder import RtcTokenBuilder
-        role_publisher = 1
+        from app.agora_token import RtcTokenBuilder, Role_Publisher
 
-        # Always use numeric UID to match joinChannel(token, channel, numericUid, ...)
-        # DO NOT use buildTokenWithUserAccount — it creates a string-UID token that
-        # mismatches the numeric UID used by the frontend, breaking Agora media auth.
-        token = RtcTokenBuilder.buildTokenWithUid(
+        token = RtcTokenBuilder.build_token_with_uid(
+            app_id=app_id,
+            app_certificate=app_certificate,
+            channel_name=channel_name,
+            uid=uid_value,
+            role=Role_Publisher,
+            token_expire=expiration_time_in_seconds,
+            privilege_expire=expiration_time_in_seconds,
+        )
+        logger.info(
+            f"AccessToken2 generated: starts_with_007={str(token).startswith('007')}, "
+            f"uid={uid_value}, len={len(token)}"
+        )
+        return token
+    except Exception as e:
+        logger.error(f"app.agora_token AccessToken2 failed: {e}. Trying fallback to agora_token_builder...")
+
+    # --- Fallback: agora_token_builder (v1 AccessToken) ---
+    try:
+        from agora_token_builder import RtcTokenBuilder as V1Builder  # type: ignore
+
+        expire_ts = int(time.time()) + expiration_time_in_seconds
+        token = V1Builder.buildTokenWithUid(
             app_id,
             app_certificate,
             channel_name,
             uid_value,
-            role_publisher,
-            privilege_expired_ts,
+            1,  # Role_Publisher
+            expire_ts,
         )
+        logger.info(f"Fallback v1 token generated: starts_with_006={str(token).startswith('006')}, uid={uid_value}")
         return token
-    except Exception as e:
-        logger.error(
-            f"Error generating Agora RTC token for channel={channel_name}, uid={uid_value}: {e}. "
-            f"Check that agora_token_builder is installed (pip install agora-token-builder) "
-            f"and AGORA_APP_ID/AGORA_APP_CERTIFICATE are correct in .env."
-        )
+    except Exception as e2:
+        logger.error(f"All Agora token generators failed: {e2}")
         return f"agora_dev_token_{channel_name}_{user_id}"
