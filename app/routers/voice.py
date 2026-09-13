@@ -45,7 +45,11 @@ def get_voice_agora_token(
     Generates an Agora RTC token for the authenticated user to join a specified voice call channel.
     """
     if not settings.AGORA_APP_ID or not settings.AGORA_APP_CERTIFICATE:
-        logger.warning("AGORA_APP_ID or AGORA_APP_CERTIFICATE missing from settings; returning development token.")
+        logger.warning(
+            f"[TOKEN] AGORA credentials missing — returning FAKE dev token for user={user_id[:8]}. "
+            f"APP_ID set={bool(settings.AGORA_APP_ID)}, CERTIFICATE set={bool(settings.AGORA_APP_CERTIFICATE)}. "
+            f"Agora media will NOT work between peers."
+        )
         return AgoraTokenResponse(
             token=f"demo_agora_rtc_token_{user_id}_{payload.channelName}",
             channelName=payload.channelName,
@@ -54,6 +58,12 @@ def get_voice_agora_token(
 
     try:
         token = generate_rtc_token(payload.channelName, user_id)
+        is_real_token = token.startswith("007")
+        logger.info(
+            f"[TOKEN] {'REAL Agora token' if is_real_token else 'FAKE dev token (token generation failed!)'} "
+            f"generated for user={user_id[:8]}, channel={payload.channelName}, "
+            f"appId={settings.AGORA_APP_ID[:8]}..."
+        )
         return AgoraTokenResponse(
             token=token,
             channelName=payload.channelName,
@@ -62,6 +72,7 @@ def get_voice_agora_token(
     except Exception as e:
         logger.error(f"Error generating Agora token: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate Agora token.")
+
 
 
 @router.post("/log-call", response_model=LogCallResponse)
