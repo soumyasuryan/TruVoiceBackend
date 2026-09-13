@@ -78,6 +78,7 @@ class AgoraTokenResponse(BaseModel):
     token: str
     channelName: str
     user_id: str
+    uid: int
 
 
 class LogCallRequest(BaseModel):

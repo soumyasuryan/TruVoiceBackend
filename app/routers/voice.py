@@ -15,7 +15,7 @@ from app.schemas import (
     UpdateCallStatusRequest,
     VoiceCallResponse,
 )
-from app.services.agora_service import generate_rtc_token
+from app.services.agora_service import generate_rtc_token, _compute_uid
 from app.services.streaming_service import (
     get_or_create_stream_session,
     remove_stream_session,
@@ -44,6 +44,7 @@ def get_voice_agora_token(
     """
     Generates an Agora RTC token for the authenticated user to join a specified voice call channel.
     """
+    uid_value = _compute_uid(user_id)
     if not settings.AGORA_APP_ID or not settings.AGORA_APP_CERTIFICATE:
         logger.warning(
             f"[TOKEN] AGORA credentials missing — returning FAKE dev token for user={user_id[:8]}. "
@@ -54,20 +55,22 @@ def get_voice_agora_token(
             token=f"demo_agora_rtc_token_{user_id}_{payload.channelName}",
             channelName=payload.channelName,
             user_id=user_id,
+            uid=uid_value,
         )
 
     try:
         token = generate_rtc_token(payload.channelName, user_id)
-        is_real_token = token.startswith("007")
+        is_real_token = token.startswith("007") or token.startswith("006")
         logger.info(
             f"[TOKEN] {'REAL Agora token' if is_real_token else 'FAKE dev token (token generation failed!)'} "
-            f"generated for user={user_id[:8]}, channel={payload.channelName}, "
+            f"generated for user={user_id[:8]}, uid={uid_value}, channel={payload.channelName}, "
             f"appId={settings.AGORA_APP_ID[:8]}..."
         )
         return AgoraTokenResponse(
             token=token,
             channelName=payload.channelName,
             user_id=user_id,
+            uid=uid_value,
         )
     except Exception as e:
         logger.error(f"Error generating Agora token: {e}")

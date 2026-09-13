@@ -11,8 +11,9 @@ def _compute_uid(user_id: str) -> int:
     MUST produce the identical value as agoraService.js _computeUid() so the token
     covers the exact UID that the frontend passes to joinChannel().
     """
+    source = str(user_id).strip().lower()
     uid = 0
-    for i, ch in enumerate(str(user_id)):
+    for i, ch in enumerate(source):
         uid = (uid + (i + 1) * ord(ch)) % 1_000_000_000
     return uid + 1
 
