@@ -98,6 +98,12 @@ async def log_outgoing_call(
             except Exception as e:
                 logger.warning(f"Error resolving target user UUID: {e}")
 
+    if not target_user_uuid:
+        raise HTTPException(
+            status_code=400,
+            detail="Voice calls can only be placed to a registered TruVoice user. Add a valid user id or phone number from the app user list.",
+        )
+
     # Create initial database record for the call
     call_record = db.table("voice_calls").insert({
         "user_id": user_id,
